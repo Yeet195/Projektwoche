@@ -1,13 +1,12 @@
 from __future__ import annotations
 from concurrent.futures import ThreadPoolExecutor, as_completed
-import threading
 import time
 from socket import *
 import subprocess
 import platform
-import re
 import ipaddress
 from parser import Parser
+from database import NetworkScanDB
 
 
 class NetworkScan:
@@ -15,124 +14,88 @@ class NetworkScan:
         self.config = Parser()
         self.client_ip = gethostbyname(self.config.return_var("scanner", "ip"))
         self.threads = int(self.config.return_var("scanner", "threads"))
-
-        # Ports to scan for
         self.ports = self.config.return_list("scanner", "ports", "int")
+        self.db = NetworkScanDB()
 
     def get_current_ip(self) -> str | Exception:
-        """
-        Get the ip of current client
-
-        :return:
-            str: ip address
-        """
+        """Get the ip of current client"""
         try:
             with socket(AF_INET, SOCK_DGRAM) as s:
                 s.connect(("8.8.8.8", 80))
                 local_ip = s.getsockname()[0]
-
             return local_ip
         except Exception as e:
             return e
 
     def get_subnet(self) -> str | Exception:
-        """
-        Get Subnet mask
-
-        :return:
-            str: subnet mask
-        """
+        """Get Subnet mask"""
         try:
             if platform.system() == "Windows":
-                # Execute ipconfig in terminal
                 result = subprocess.run(["ipconfig"], capture_output=True, text=True)
-
-                # Get stdout string
                 stdout = str(result).split("stdout='", 1)[1].rsplit("'stderr=", 1)[0]
 
-                # Find ips after colon
+                import re
                 ipv4_addresses = re.findall(r':\s+(\d{1,3}(?:\.\d{1,3}){3})', stdout)
 
-                # Remove everything that does not start with "255."
                 for address in ipv4_addresses:
-                    if not address.startswith("255."):
-                        ipv4_addresses.remove(address)
-                subnet_mask: str = ipv4_addresses[0]
+                    if address.startswith("255."):
+                        return address
 
-                return subnet_mask
+                # Fallback to common subnet mask
+                return "255.255.255.0"
         except Exception as e:
             return e
 
-    def get_ips(self, ip: str, subnet: str) -> list[str] | None:
+    def combined_scan(self, network_range: str = None, ping_timeout: int = 2,
+                      save_to_db: bool = True, notes: str = None) -> dict:
         """
-        Get all ips of the clients network
-
-        :return:
-            list[str]: list of all possible ips in network
-        """
-        # create the network object
-        net_obj = ipaddress.IPv4Network(f"{ip}/{subnet}", strict=False)
-
-        # Get usable ips excluding network and broadcast
-        all_ips = [str(ip) for ip in net_obj.hosts()]
-
-        return all_ips
-
-    def ping_sweep(self, network_range: str = None, timeout: int = 2) -> dict:
-        """
-        Perform ping sweep to discover online hosts in the network
-
-        :param network_range: CIDR notation network (e.g., "192.168.1.0/24"). If None, uses current network
-        :param timeout: Ping timeout in seconds
-        :return: dict with online/offline hosts and summary stats
+        Perform ping sweep first, then port scan only on online hosts
+        Returns results and optionally saves to database
         """
 
         def ping_single_host(ip_str: str) -> tuple[str, bool]:
             """Internal function to ping a single host"""
             try:
-                # Determine ping parameters based on OS
                 if platform.system().lower() == 'windows':
-                    cmd = ['ping', '-n', '1', '-w', str(timeout * 1000), ip_str]
+                    cmd = ['ping', '-n', '1', '-w', str(ping_timeout * 1000), ip_str]
                 else:
-                    cmd = ['ping', '-c', '1', '-W', str(timeout * 1000), ip_str]
+                    cmd = ['ping', '-c', '1', '-W', str(ping_timeout * 1000), ip_str]
 
                 result = subprocess.run(
                     cmd,
                     capture_output=True,
                     text=True,
-                    timeout=timeout + 1,
+                    timeout=ping_timeout + 1,
                     encoding='utf-8',
                     errors='ignore'
                 )
                 return ip_str, result.returncode == 0
 
-            except subprocess.TimeoutExpired:
-                return ip_str, False
-            except UnicodeDecodeError:
-                # Fallback: try without text capture
-                try:
-                    result = subprocess.run(
-                        cmd,
-                        capture_output=True,
-                        timeout=timeout + 1
-                    )
-                    return ip_str, result.returncode == 0
-                except Exception:
-                    return ip_str, False
             except Exception:
                 return ip_str, False
 
-        # Initialize results
-        results = {
-            "online": [],
-            "offline": [],
-            "summary": {}
-        }
+        def scan_ip_ports(ip: str) -> tuple[str, list[int]]:
+            """Scan all ports for an IP address"""
+            scanned_ports = []
+            for port in self.ports:
+                try:
+                    s = socket(AF_INET, SOCK_STREAM)
+                    s.settimeout(0.3)
+                    connection = s.connect_ex((ip, port))
+                    if connection == 0:
+                        scanned_ports.append(port)
+                    s.close()
+                except Exception:
+                    continue
+                time.sleep(0.001)
+            return ip, scanned_ports
+
+        # Initialize results dictionary
+        results = {}
 
         try:
             # Determine network range
             if network_range is None:
-                # Use current network
                 current_ip = self.get_current_ip()
                 subnet = self.get_subnet()
                 if isinstance(current_ip, Exception) or isinstance(subnet, Exception):
@@ -143,162 +106,109 @@ class NetworkScan:
             network = ipaddress.IPv4Network(network_range, strict=False)
             host_ips = [str(ip) for ip in network.hosts()]
 
+            print(f"Starting scan of {len(host_ips)} hosts in {network_range}...")
             start_time = time.time()
 
-            # Perform ping sweep
+            # Step 1: Ping sweep to find online hosts
+            online_hosts = []
             with ThreadPoolExecutor(max_workers=self.threads) as executor:
                 futures = [executor.submit(ping_single_host, ip) for ip in host_ips]
 
-                completed = 0
                 for future in as_completed(futures):
                     try:
                         ip, is_online = future.result()
-                        completed += 1
-
                         if is_online:
-                            results["online"].append(ip)
+                            online_hosts.append(ip)
+                            results[ip] = {"status": "online", "ports": []}
                         else:
-                            results["offline"].append(ip)
-
+                            results[ip] = {"status": "offline", "ports": []}
                     except Exception:
-                        results["offline"].append("unknown")
+                        continue
 
+            print(f"Found {len(online_hosts)} online hosts. Starting port scan...")
 
-            end_time = time.time()
-            scan_duration = end_time - start_time
+            # Step 2: Port scan only online hosts
+            if online_hosts:
+                with ThreadPoolExecutor(max_workers=self.threads) as executor:
+                    futures = [executor.submit(scan_ip_ports, ip) for ip in online_hosts]
 
-            results["summary"] = {
-                "total_scanned": len(host_ips),
-                "online_count": len(results["online"]),
-                "offline_count": len(results["offline"]),
-                "scan_duration": round(scan_duration, 2),
-                "hosts_per_second": round(len(host_ips) / scan_duration, 2),
-                "success_rate": round((len(results["online"]) / len(host_ips)) * 100, 2) if host_ips else 0
-            }
+                    for future in as_completed(futures):
+                        try:
+                            ip, open_ports = future.result()
+                            results[ip]["ports"] = open_ports
+                        except Exception as e:
+                            print(f"Error scanning IP {ip}: {e}")
+
+            elapsed_time = time.time() - start_time
+            print(f"Combined scan finished in: {elapsed_time:.2f}s")
+
+            # Print summary
+            online_count = sum(1 for host in results.values() if host["status"] == "online")
+            hosts_with_ports = sum(1 for host in results.values() if len(host["ports"]) > 0)
+            print(f"Summary: {online_count}/{len(host_ips)} hosts online, {hosts_with_ports} hosts with open ports")
+
+            # Save to database if requested
+            if save_to_db:
+                scan_id = self.db.save_scan_results(
+                    results=results,
+                    network_range=network_range,
+                    scan_duration=elapsed_time,
+                    notes=notes
+                )
+                print(f"Results saved to database with scan ID: {scan_id}")
 
             return results
 
         except Exception as e:
-            print(f"Ping sweep error: {e}")
+            print(f"Scan error: {e}")
             return results
 
-    def scan_ports(self) -> dict[str, list[int]]:
-        """
-        Scan for defined ports on target ip.
+    def show_scan_history(self, limit: int = 5):
+        """Display recent scan history"""
+        history = self.db.get_scan_history(limit)
+        if not history:
+            print("No scan history found.")
+            return
 
-        :return:
-            list: list of open ports
-        """
-        open_ports: dict[str, list[int]] = {}
-        lock = threading.Lock()
-        scanned_count = 0
-        total_ips = 0
+        print(f"\nRecent Scan History (last {limit}):")
+        print("-" * 80)
+        for scan in history:
+            print(f"ID: {scan['scan_id']} | Date: {scan['scan_date']}")
+            print(f"Network: {scan['network_range']} | Hosts: {scan['online_hosts']}/{scan['total_hosts']} online")
+            print(f"Duration: {scan['scan_duration']:.2f}s | Notes: {scan['notes'] or 'None'}")
+            print("-" * 80)
 
-        def scan_ip_ports(ip: str) -> tuple[str, list[int]]:
-            """
-            scan all ports for ip address
+    def show_host_history(self, ip_address: str):
+        """Display scan history for a specific IP"""
+        history = self.db.get_host_history(ip_address)
+        if not history:
+            print(f"No history found for IP {ip_address}")
+            return
 
-            :param ip:
+        print(f"\nScan History for {ip_address}:")
+        print("-" * 60)
+        for entry in history:
+            print(f"Date: {entry['scan_date']} | Status: {entry['status']}")
+            if entry['ports']:
+                print(f"Open Ports: {entry['ports']}")
+            print("-" * 60)
 
-            :return:
-                tuple[str, list[int]]: returns ip with all open ports
-            """
-            nonlocal scanned_count
-            scanned_ports = []
+if __name__ == "__main__":
+    networkScan = NetworkScan()
 
-            for port in self.ports:
-                try:
-                    s = socket(AF_INET, SOCK_STREAM)
-                    s.settimeout(0.3)
-                    connection = s.connect_ex((ip, port))
-                    if connection == 0:
-                        scanned_ports.append(port)
-                    s.close()
-                except Exception:
-                    continue
+    # Perform scan and save to database
+    scan_results = networkScan.combined_scan(notes="Weekly network scan")
 
-                # small delay for lower powered systems
-                time.sleep(0.001)
+    # Show scan history
+    networkScan.show_scan_history()
 
-            return ip, scanned_ports
+    # Show database statistics
+    stats = networkScan.db.get_statistics()
+    print(f"\nDatabase Statistics:")
+    print(f"Total scans: {stats['total_scans']}")
+    print(f"Unique IPs scanned: {stats['unique_ips_scanned']}")
+    print(f"Last scan: {stats['last_scan_date']}")
+    print(f"Average online hosts per scan: {stats['average_online_hosts']}")
 
-        ips = list(self.get_ips(self.get_current_ip(), self.get_subnet()))
-        max_workers = self.threads
-        start_time = time.time()
-
-        with ThreadPoolExecutor(max_workers=max_workers) as executor:
-            futures = [executor.submit(scan_ip_ports, ip) for ip in ips]
-
-            for future in as_completed(futures):
-                try:
-                    ip, scanned_ports = future.result()
-                    if scanned_ports:
-                        open_ports[ip] = scanned_ports
-                except Exception as e:
-                    print(f"Error scanning IP: {e}")
-
-        elapsed_time = time.time() - start_time
-        print(f"Port scan finished in: {elapsed_time}s")
-
-        return open_ports
-
-    def combined_scan(self, network_range: str = None, ping_timeout: int = 2) -> dict:
-        """
-        Perform ping sweep first, then port scan only on online hosts
-
-        :param network_range: CIDR notation network (e.g., "192.168.1.0/24"). If None, uses current network
-        :param ping_timeout: Ping timeout in seconds
-        :return: dict with ping results and port scan results
-        """
-
-        # Perform ping sweep
-        ping_results = self.ping_sweep(network_range, ping_timeout)
-
-        if not ping_results["online"]:
-            return {"ping_results": ping_results, "port_results": {}}
-
-        # Port scan only online hosts
-        def scan_ip_ports(ip: str) -> tuple[str, list[int]]:
-            scanned_ports = []
-            for port in self.ports:
-                try:
-                    s = socket(AF_INET, SOCK_STREAM)
-                    s.settimeout(0.3)
-                    connection = s.connect_ex((ip, port))
-                    if connection == 0:
-                        scanned_ports.append(port)
-                    s.close()
-                except Exception:
-                    continue
-                time.sleep(0.001)
-            return ip, scanned_ports
-
-        port_results = {}
-        start_time = time.time()
-
-        with ThreadPoolExecutor(max_workers=self.threads) as executor:
-            futures = [executor.submit(scan_ip_ports, ip) for ip in ping_results["online"]]
-
-            for future in as_completed(futures):
-                try:
-                    ip, scanned_ports = future.result()
-                    if scanned_ports:
-                        port_results[ip] = scanned_ports
-                except Exception as e:
-                    print(f"Error scanning IP: {e}")
-
-        elapsed_time = time.time() - start_time
-        print(f"Port scan finished in: {elapsed_time}s")
-
-        return {"ping_results": ping_results, "port_results": port_results}
-
-networkScan = NetworkScan()
-
-#Just ping sweep
-#print(networkScan.ping_sweep())
-
-# Just port scan
-#print(networkScan.scan_ports())
-
-# Combined scan
-print(networkScan.combined_scan())
+    # Example: Show history for a specific IP
+    # networkScan.show_host_history("192.168.1.1")

@@ -1,0 +1,272 @@
+import sqlite3
+import json
+from datetime import datetime
+from typing import Dict, List, Optional
+
+
+class NetworkScanDB:
+    def __init__(self, db_path: str = "network_scans.db"):
+        self.db_path = db_path
+        self.init_database()
+
+    def init_database(self):
+        """Initialize the database with required tables"""
+        with sqlite3.connect(self.db_path) as conn:
+            cursor = conn.cursor()
+
+            # Create scans table to store scan data
+            cursor.execute('''
+                CREATE TABLE IF NOT EXISTS scans (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    scan_date TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    network_range TEXT,
+                    total_hosts INTEGER,
+                    online_hosts INTEGER,
+                    scan_duration REAL,
+                    notes TEXT
+                )
+            ''')
+
+            # Create scan_results table to store individual host results
+            cursor.execute('''
+                CREATE TABLE IF NOT EXISTS scan_results (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    scan_id INTEGER,
+                    ip_address TEXT NOT NULL,
+                    status TEXT NOT NULL,
+                    open_ports TEXT,  -- JSON string of port list
+                    scan_timestamp TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    FOREIGN KEY (scan_id) REFERENCES scans (id)
+                )
+            ''')
+
+            # Create index for faster queries
+            cursor.execute('''
+                CREATE INDEX IF NOT EXISTS idx_scan_results_ip 
+                ON scan_results (ip_address)
+            ''')
+
+            cursor.execute('''
+                CREATE INDEX IF NOT EXISTS idx_scan_results_scan_id 
+                ON scan_results (scan_id)
+            ''')
+
+            conn.commit()
+
+    def save_scan_results(self, results: Dict, network_range: str = None,
+                          scan_duration: float = 0, notes: str = None) -> int:
+        """
+        Save scan results to database
+
+        :param results: Dictionary with IP results {ip: {"status": "online/offline", "ports": [...]}}
+        :param network_range: Network range that was scanned
+        :param scan_duration: Time taken for the scan
+        :param notes: Optional notes about the scan
+        :return: scan_id of the saved scan
+        """
+        with sqlite3.connect(self.db_path) as conn:
+            cursor = conn.cursor()
+
+            # Calculate summary statistics
+            total_hosts = len(results)
+            online_hosts = sum(1 for host in results.values() if host["status"] == "online")
+
+            # Insert scan metadata
+            cursor.execute('''
+                INSERT INTO scans (network_range, total_hosts, online_hosts, scan_duration, notes)
+                VALUES (?, ?, ?, ?, ?)
+            ''', (network_range, total_hosts, online_hosts, scan_duration, notes))
+
+            scan_id = cursor.lastrowid
+
+            # Insert individual host results
+            for ip, data in results.items():
+                ports_json = json.dumps(data["ports"]) if data["ports"] else "[]"
+                cursor.execute('''
+                    INSERT INTO scan_results (scan_id, ip_address, status, open_ports)
+                    VALUES (?, ?, ?, ?)
+                ''', (scan_id, ip, data["status"], ports_json))
+
+            conn.commit()
+            return scan_id
+
+    def get_scan_history(self, limit: int = 10) -> List[Dict]:
+        """Get recent scan history"""
+        with sqlite3.connect(self.db_path) as conn:
+            cursor = conn.cursor()
+            cursor.execute('''
+                SELECT id, scan_date, network_range, total_hosts, online_hosts, 
+                       scan_duration, notes
+                FROM scans 
+                ORDER BY scan_date DESC 
+                LIMIT ?
+            ''', (limit,))
+
+            scans = []
+            for row in cursor.fetchall():
+                scans.append({
+                    "scan_id": row[0],
+                    "scan_date": row[1],
+                    "network_range": row[2],
+                    "total_hosts": row[3],
+                    "online_hosts": row[4],
+                    "scan_duration": row[5],
+                    "notes": row[6]
+                })
+
+            return scans
+
+    def get_scan_results(self, scan_id: int) -> Dict:
+        """Get detailed results for a specific scan"""
+        with sqlite3.connect(self.db_path) as conn:
+            cursor = conn.cursor()
+
+            # Get scan metadata
+            cursor.execute('''
+                SELECT scan_date, network_range, total_hosts, online_hosts, 
+                       scan_duration, notes
+                FROM scans 
+                WHERE id = ?
+            ''', (scan_id,))
+
+            scan_info = cursor.fetchone()
+            if not scan_info:
+                return {}
+
+            # Get scan results
+            cursor.execute('''
+                SELECT ip_address, status, open_ports, scan_timestamp
+                FROM scan_results 
+                WHERE scan_id = ?
+                ORDER BY ip_address
+            ''', (scan_id,))
+
+            results = {}
+            for row in cursor.fetchall():
+                ip, status, ports_json, timestamp = row
+                ports = json.loads(ports_json) if ports_json else []
+                results[ip] = {
+                    "status": status,
+                    "ports": ports,
+                    "timestamp": timestamp
+                }
+
+            return {
+                "scan_info": {
+                    "scan_date": scan_info[0],
+                    "network_range": scan_info[1],
+                    "total_hosts": scan_info[2],
+                    "online_hosts": scan_info[3],
+                    "scan_duration": scan_info[4],
+                    "notes": scan_info[5]
+                },
+                "results": results
+            }
+
+    def get_host_history(self, ip_address: str, limit: int = 10) -> List[Dict]:
+        """Get scan history for a specific IP address"""
+        with sqlite3.connect(self.db_path) as conn:
+            cursor = conn.cursor()
+            cursor.execute('''
+                SELECT s.scan_date, sr.status, sr.open_ports, s.network_range, sr.scan_id
+                FROM scan_results sr
+                JOIN scans s ON sr.scan_id = s.id
+                WHERE sr.ip_address = ?
+                ORDER BY s.scan_date DESC
+                LIMIT ?
+            ''', (ip_address, limit))
+
+            history = []
+            for row in cursor.fetchall():
+                scan_date, status, ports_json, network_range, scan_id = row
+                ports = json.loads(ports_json) if ports_json else []
+                history.append({
+                    "scan_date": scan_date,
+                    "status": status,
+                    "ports": ports,
+                    "network_range": network_range,
+                    "scan_id": scan_id
+                })
+
+            return history
+
+    def get_online_hosts(self, scan_id: Optional[int] = None) -> List[Dict]:
+        """Get all online hosts from latest scan or specific scan"""
+        with sqlite3.connect(self.db_path) as conn:
+            cursor = conn.cursor()
+
+            if scan_id is None:
+                # Get latest scan ID
+                cursor.execute('SELECT MAX(id) FROM scans')
+                result = cursor.fetchone()
+                if not result or not result[0]:
+                    return []
+                scan_id = result[0]
+
+            cursor.execute('''
+                SELECT ip_address, open_ports, scan_timestamp
+                FROM scan_results 
+                WHERE scan_id = ? AND status = 'online'
+                ORDER BY ip_address
+            ''', (scan_id,))
+
+            hosts = []
+            for row in cursor.fetchall():
+                ip, ports_json, timestamp = row
+                ports = json.loads(ports_json) if ports_json else []
+                hosts.append({
+                    "ip": ip,
+                    "ports": ports,
+                    "timestamp": timestamp
+                })
+
+            return hosts
+
+    def delete_old_scans(self, days_to_keep: int = 30):
+        """Delete scans older than specified days"""
+        with sqlite3.connect(self.db_path) as conn:
+            cursor = conn.cursor()
+            cursor.execute('''
+                DELETE FROM scan_results 
+                WHERE scan_id IN (
+                    SELECT id FROM scans 
+                    WHERE scan_date < datetime('now', '-{} days')
+                )
+            '''.format(days_to_keep))
+
+            cursor.execute('''
+                DELETE FROM scans 
+                WHERE scan_date < datetime('now', '-{} days')
+            '''.format(days_to_keep))
+
+            deleted_count = cursor.rowcount
+            conn.commit()
+            return deleted_count
+
+    def get_statistics(self) -> Dict:
+        """Get database statistics"""
+        with sqlite3.connect(self.db_path) as conn:
+            cursor = conn.cursor()
+
+            # Total scans
+            cursor.execute('SELECT COUNT(*) FROM scans')
+            total_scans = cursor.fetchone()[0]
+
+            # Total unique IPs scanned
+            cursor.execute('SELECT COUNT(DISTINCT ip_address) FROM scan_results')
+            unique_ips = cursor.fetchone()[0]
+
+            # Most recent scan
+            cursor.execute('SELECT MAX(scan_date) FROM scans')
+            last_scan = cursor.fetchone()[0]
+
+            # Average online hosts per scan
+            cursor.execute('SELECT AVG(online_hosts) FROM scans')
+            avg_online = cursor.fetchone()[0] or 0
+
+            return {
+                "total_scans": total_scans,
+                "unique_ips_scanned": unique_ips,
+                "last_scan_date": last_scan,
+                "average_online_hosts": round(avg_online, 2)
+            }
