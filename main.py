@@ -78,13 +78,12 @@ class NetworkScan:
 
         return all_ips
 
-    def ping_sweep(self, network_range: str = None, timeout: int = 2, verbose: bool = True) -> dict:
+    def ping_sweep(self, network_range: str = None, timeout: int = 2) -> dict:
         """
         Perform ping sweep to discover online hosts in the network
 
         :param network_range: CIDR notation network (e.g., "192.168.1.0/24"). If None, uses current network
         :param timeout: Ping timeout in seconds
-        :param verbose: Print progress during scan
         :return: dict with online/offline hosts and summary stats
         """
 
@@ -158,12 +157,8 @@ class NetworkScan:
 
                         if is_online:
                             results["online"].append(ip)
-                            if verbose:
-                                print(f"{ip:<15} - ONLINE")
                         else:
                             results["offline"].append(ip)
-                            if verbose:
-                                print(f"{ip:<15} - OFFLINE")
 
                     except Exception:
                         results["offline"].append("unknown")
@@ -247,23 +242,20 @@ class NetworkScan:
 
         return open_ports
 
-    def combined_scan(self, network_range: str = None, ping_timeout: int = 2, verbose: bool = True) -> dict:
+    def combined_scan(self, network_range: str = None, ping_timeout: int = 2) -> dict:
         """
         Perform ping sweep first, then port scan only on online hosts
 
         :param network_range: CIDR notation network (e.g., "192.168.1.0/24"). If None, uses current network
         :param ping_timeout: Ping timeout in seconds
-        :param verbose: Print progress during scan
         :return: dict with ping results and port scan results
         """
 
         # Perform ping sweep
-        ping_results = self.ping_sweep(network_range, ping_timeout, verbose)
+        ping_results = self.ping_sweep(network_range, ping_timeout)
 
         if not ping_results["online"]:
             return {"ping_results": ping_results, "port_results": {}}
-
-        print(f"\n🔌 Starting port scan on {len(ping_results['online'])} online hosts...")
 
         # Port scan only online hosts
         def scan_ip_ports(ip: str) -> tuple[str, list[int]]:
@@ -292,8 +284,6 @@ class NetworkScan:
                     ip, scanned_ports = future.result()
                     if scanned_ports:
                         port_results[ip] = scanned_ports
-                        if verbose:
-                            print(f"🔌 {ip}: Open ports {scanned_ports}")
                 except Exception as e:
                     print(f"Error scanning IP: {e}")
 
@@ -305,10 +295,10 @@ class NetworkScan:
 networkScan = NetworkScan()
 
 #Just ping sweep
-#ping_results = networkScan.ping_sweep()
+#print(networkScan.ping_sweep())
 
 # Just port scan
-# port_results = networkScan.scan_ports()
+#print(networkScan.scan_ports())
 
 # Combined scan
-combined_results = networkScan.combined_scan()
+print(networkScan.combined_scan())
