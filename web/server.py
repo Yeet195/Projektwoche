@@ -76,26 +76,35 @@ class WebsocketNetworkScan(NetworkScan):
                     if platform.system().lower() == 'windows':
                         cmd = ['ping', '-n', '1', '-w', '2000', ip_str]
                     else:
-                        cmd = ['ping', '-n', '1', '-w', '2000', ip_str]
+                        cmd = ['ping', '-c', '1', '-W', '2000', ip_str]
 
-                    results = subprocess.run(cmd, capture_output=True, text=True, timeout=3)
-                    is_online = results.returncode == 0
+                    # Fix the encoding issue
+                    result = subprocess.run(
+                        cmd,
+                        capture_output=True,
+                        text=True,
+                        timeout=3,
+                        encoding='utf-8',
+                        errors='ignore'  # This will ignore decode errors
+                    )
+                    is_online = result.returncode == 0
 
                     completed += 1
                     progress = (completed / total_hosts) * 100
 
                     socketio.emit('scan_progress', {
-                        'phase' : 'ping_sweep',
-                        'message' : f'Ping sweep: {completed}/{total_hosts}',
-                        'progress' : progress,
-                        'total' : total_hosts,
-                        'current_ip' : ip_str,
-                        'status' : 'online' if is_online else 'offline'
+                        'phase': 'ping_sweep',
+                        'message': f'Ping sweep: {completed}/{total_hosts}',
+                        'progress': progress,
+                        'total': total_hosts,
+                        'current_ip': ip_str,
+                        'status': 'online' if is_online else 'offline'
                     })
 
                     return ip_str, is_online
-                except Exception:
+                except Exception as e:
                     completed += 1
+                    print(f"Error pinging {ip_str}: {e}")  # Optional: log the error
                     return ip_str, False
 
             with ThreadPoolExecutor(max_workers=self.threads) as executor:

@@ -58,15 +58,15 @@
         <div class="mb-6">
             {#if $connected}
                 <div class="bg-green-100 border border-green-400 text-green-700 px-4 py-3 rounded">
-                    ✅ Connected to scan server
+                    Connected to scan server
                 </div>
             {:else if $connectionError}
                 <div class="bg-red-100 border border-red-400 text-red-700 px-4 py-3 rounded">
-                    ❌ Connection failed: {$connectionError}
+                    Connection failed: {$connectionError}
                 </div>
             {:else}
                 <div class="bg-yellow-100 border border-yellow-400 text-yellow-700 px-4 py-3 rounded">
-                    🔄 Connecting to scan server...
+                    Connecting to scan server...
                 </div>
             {/if}
         </div>
@@ -77,10 +77,11 @@
 
             <div class="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
                 <div>
-                    <label class="block text-sm font-medium text-gray-700 mb-2">
+                    <label for="networkRange" class="block text-sm font-medium text-gray-700 mb-2">
                         Network Range (optional)
                     </label>
                     <input
+                            id="networkRange"
                             type="text"
                             bind:value={networkRange}
                             placeholder="e.g., 192.168.1.0/24"
@@ -88,10 +89,11 @@
                             disabled={$scanInProgress}/>
                 </div>
                 <div>
-                    <label class="block text-sm font-medium text-gray-700 mb-2">
+                    <label for="scanNotes" class="block text-sm font-medium text-gray-700 mb-2">
                         Notes
                     </label>
                     <input
+                            id="scanNotes"
                             type="text"
                             bind:value={scanNotes}
                             placeholder="Scan description"
