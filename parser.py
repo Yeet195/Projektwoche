@@ -1,13 +1,23 @@
 import configparser
+import os
 
 class Parser:
     def __init__(self):
-        self.config_file = 'config.ini'
+        current_dir = os.path.dirname(os.path.abspath(__file__))
+        self.config_file = os.path.join(current_dir, 'config.ini')
+
+        if not os.path.exists(self.config_file):
+            parent_dir = os.path.dirname(current_dir)
+            self.config_file = os.path.join(parent_dir, 'config.ini')
+
         self.config = self.load_config()
 
     def load_config(self):
         config = configparser.ConfigParser()
-        config.read(self.config_file)
+        if os.path.exists(self.config_file):
+            config.read(self.config_file)
+        else:
+            raise FileNotFoundError(f"Config file not found: {self.config_file}")
         return config
 
     def return_var(self, section, option):

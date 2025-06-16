@@ -6,9 +6,14 @@ from flask_cors import CORS, cross_origin
 import json
 import threading
 import time
-from ..database import NetworkScanDB
-from ..main import NetworkScan
-from ..parser import Parser
+import sys
+import os
+
+sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
+from database import NetworkScanDB
+from main import NetworkScan
+from parser import Parser
 
 config = Parser()
 app = Flask(__name__)
@@ -216,5 +221,5 @@ def handle_get_status():
     emit('statistics', stats)
 
 if __name__ == "__main__":
-    socketio.run(app, debug=True, host='0.0.0.0', port=5000)
+    socketio.run(app, debug=True, host='0.0.0.0', port=5000, allow_unsafe_werkzeug=True)
 
