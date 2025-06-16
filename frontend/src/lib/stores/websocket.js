@@ -15,12 +15,18 @@ export const statistics = writable({});
 // WebSocket instance
 let socket = null;
 
-export function connectWebSocket(url = 'http://localhost:5000') {
+export function connectWebSocket(url = '/socket.io') {
     if (socket) {
         socket.disconnect();
     }
 
-    socket = io(url);
+    socket = io(url, {
+        autoConnect: true,
+        reconnection: true,
+        reconnectionDelay: 1000,
+        reconnectionAttempts: 5,
+        timeout: 20000,
+    });
 
     socket.on('connect', () => {
         connected.set(true);

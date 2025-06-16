@@ -1,13 +1,26 @@
 version: '3.8'
 
 services:
-  frontend:
-    build: ./frontend
-    container_name: svelte-frontend
-
   backend:
     build: ./backend
     container_name: python-backend
+    environment:
+      - FLASK_ENV=production
+    volumes:
+      - ./backend:/app
+    ports:
+      - "5000:5000"
+    networks:
+      - app-network
+
+  frontend:
+    build: ./frontend
+    container_name: svelte-frontend
+    volumes:
+      - ./frontend:/app
+      - /app/node_modules
+    networks:
+      - app-network
 
   nginx:
     image: nginx:alpine
@@ -19,3 +32,9 @@ services:
     depends_on:
       - frontend
       - backend
+    networks:
+      - app-network
+
+networks:
+  app-network:
+    driver: bridge
