@@ -2,11 +2,11 @@ FROM node:18-alpine
 
 WORKDIR /app
 
-# Copy package files
+# Copy package files first for better caching
 COPY package*.json ./
 
 # Install dependencies
-RUN npm ci
+RUN npm ci --only=production=false
 
 # Copy source code
 COPY . .
@@ -14,9 +14,10 @@ COPY . .
 # Build the application
 RUN npm run build
 
-# Install serve for production
+# Install serve for production serving
 RUN npm install -g serve
 
+# Expose port
 EXPOSE 3000
 
 # Serve the built application
