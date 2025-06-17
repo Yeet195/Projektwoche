@@ -1,4 +1,4 @@
-from flask import Flask
+from flask import Flask, redirect
 from flask_socketio import SocketIO, emit
 from flask_cors import CORS
 import json
@@ -14,20 +14,19 @@ from parser import Parser
 config = Parser()
 app = Flask(__name__)
 app.config['SECRET_KEY'] = config.return_var("frontend", "secret_key")
+FRONTEND_URL = config.return_var("frontend", "url")
 
-# Configure CORS for production
 CORS(app, resources={
     r"/*": {
-        "origins": ["http://localhost:3000", "http://frontend:3000", "http://localhost:80"],
+        "origins": [FRONTEND_URL, "http://frontend:3000", "http://localhost:80", "http://localhost"],
         "methods": ["GET", "POST"],
         "allow_headers": ["Content-Type"]
     }
 })
 
-# Configure SocketIO with proper CORS
 socketio = SocketIO(
     app,
-    cors_allowed_origins=["http://localhost:3000", "http://frontend:3000", "http://localhost:80", "http://localhost"],
+    cors_allowed_origins=[FRONTEND_URL, "http://frontend:3000", "http://localhost:80", "http://localhost"],
     async_mode='threading',
     logger=True,
     engineio_logger=True
@@ -253,6 +252,11 @@ def handle_get_scan_history():
 def handle_get_statistics():
     stats = db.get_statistics()
     emit('statistics', stats)
+
+@app.route('/socket.io.js')
+def socket_io_js():
+    """Serve Socket.IO client library"""
+    return redirect('https://cdn.socket.io/4.8.1/socket.io.min.js')
 
 if __name__ == "__main__":
     print("Starting Flask-SocketIO server...")
