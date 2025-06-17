@@ -18,8 +18,15 @@ class NetworkScan:
         self.db = NetworkScanDB()
 
     def get_current_ip(self) -> str | Exception:
-        """Get the ip of current client"""
         try:
+            # First get default route interface IP
+            result = subprocess.run(['ip', 'route', 'get', '8.8.8.8'], capture_output=True, text=True)
+            import re
+            match = re.search(r'src (\d+\.\d+\.\d+\.\d+)', result.stdout)
+            if match:
+                return match.group(1)
+
+            # Fallback to socket method
             with socket(AF_INET, SOCK_DGRAM) as s:
                 s.connect(("8.8.8.8", 80))
                 local_ip = s.getsockname()[0]
@@ -45,35 +52,26 @@ class NetworkScan:
                 return "255.255.255.0"
 
             else:  # Linux/Unix/macOS
-                # Get default route interface
-                result = subprocess.run(['ip', 'route', 'show', 'default'],
-                                        capture_output=True, text=True)
+            # Get the actual IP and netmask directly
+            result = subprocess.run(['ip', 'addr', 'show'], capture_output=True, text=True)
 
-                import re
-                # get interface name from default route
-                match = re.search(r'dev (\w+)', result.stdout)
-                if not match:
-                    return "255.255.255.0"  # fallback
+            import re
+            # Find the interface with a route to internet
+            route_result = subprocess.run(['ip', 'route', 'get', '8.8.8.8'], capture_output=True, text=True)
+            interface_match = re.search(r'dev (\w+)', route_result.stdout)
 
-                interface = match.group(1)
-
-                # get interface info
-                result = subprocess.run(['ip', 'addr', 'show', interface],
-                                        capture_output=True, text=True)
-
-                # Extract CIDR notation
+            if interface_match:
+                interface = interface_match.group(1)
+                # Get CIDR for that interface
+                result = subprocess.run(['ip', 'addr', 'show', interface], capture_output=True, text=True)
                 match = re.search(r'inet (\d+\.\d+\.\d+\.\d+)/(\d+)', result.stdout)
                 if match:
-                    prefix_len = int(match.group(2))
-                    # Convert CIDR prefix to subnet mask
-                    mask = (0xffffffff >> (32 - prefix_len)) << (32 - prefix_len)
-                    return f"{(mask >> 24) & 255}.{(mask >> 16) & 255}.{(mask >> 8) & 255}.{mask & 255}"
+                    return match.group(2)  # Return CIDR prefix
 
-                # Fallback
-                return "255.255.255.0"
+            return "24"
 
         except Exception as e:
-            return e
+            return "24"
 
     def combined_scan(self, network_range: str = None, ping_timeout: int = 2,
                       save_to_db: bool = True, notes: str = None) -> dict:
@@ -86,9 +84,9 @@ class NetworkScan:
             """Internal function to ping a single host"""
             try:
                 if platform.system().lower() == 'windows':
-                    cmd = ['ping', '-n', '1', '-w', str(ping_timeout * 1000), ip_str]
+                    cmd = ['ping', '-n', '1', '-w', str(ping_timeout), ip_str]
                 else:
-                    cmd = ['ping', '-c', '1', '-W', str(ping_timeout * 1000), ip_str]
+                    cmd = ['ping', '-c', '1', '-W', str(ping_timeout), ip_str]
 
                 result = subprocess.run(
                     cmd,
@@ -109,14 +107,14 @@ class NetworkScan:
             for port in self.ports:
                 try:
                     s = socket(AF_INET, SOCK_STREAM)
-                    s.settimeout(0.3)
+                    s.settimeout(1.0)
                     connection = s.connect_ex((ip, port))
                     if connection == 0:
                         scanned_ports.append(port)
                     s.close()
                 except Exception:
                     continue
-                time.sleep(0.001)
+                time.sleep(0.01)
             return ip, scanned_ports
 
         # Initialize results dictionary
