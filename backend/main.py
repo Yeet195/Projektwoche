@@ -41,8 +41,37 @@ class NetworkScan:
                     if address.startswith("255."):
                         return address
 
-                # Fallback to common subnet mask
+                # Fallback
                 return "255.255.255.0"
+
+            else:  # Linux/Unix/macOS
+                # Get default route interface
+                result = subprocess.run(['ip', 'route', 'show', 'default'],
+                                        capture_output=True, text=True)
+
+                import re
+                # get interface name from default route
+                match = re.search(r'dev (\w+)', result.stdout)
+                if not match:
+                    return "255.255.255.0"  # fallback
+
+                interface = match.group(1)
+
+                # get interface info
+                result = subprocess.run(['ip', 'addr', 'show', interface],
+                                        capture_output=True, text=True)
+
+                # Extract CIDR notation
+                match = re.search(r'inet (\d+\.\d+\.\d+\.\d+)/(\d+)', result.stdout)
+                if match:
+                    prefix_len = int(match.group(2))
+                    # Convert CIDR prefix to subnet mask
+                    mask = (0xffffffff >> (32 - prefix_len)) << (32 - prefix_len)
+                    return f"{(mask >> 24) & 255}.{(mask >> 16) & 255}.{(mask >> 8) & 255}.{mask & 255}"
+
+                # Fallback
+                return "255.255.255.0"
+
         except Exception as e:
             return e
 
