@@ -52,23 +52,22 @@ class NetworkScan:
                 return "255.255.255.0"
 
             else:  # Linux/Unix/macOS
-            # Get the actual IP and netmask directly
-            result = subprocess.run(['ip', 'addr', 'show'], capture_output=True, text=True)
+                result = subprocess.run(['ip', 'addr', 'show'], capture_output=True, text=True)
 
-            import re
-            # Find the interface with a route to internet
-            route_result = subprocess.run(['ip', 'route', 'get', '8.8.8.8'], capture_output=True, text=True)
-            interface_match = re.search(r'dev (\w+)', route_result.stdout)
+                import re
+                # Find the interface with a route to internet
+                route_result = subprocess.run(['ip', 'route', 'get', '8.8.8.8'], capture_output=True, text=True)
+                interface_match = re.search(r'dev (\w+)', route_result.stdout)
 
-            if interface_match:
-                interface = interface_match.group(1)
-                # Get CIDR for that interface
-                result = subprocess.run(['ip', 'addr', 'show', interface], capture_output=True, text=True)
-                match = re.search(r'inet (\d+\.\d+\.\d+\.\d+)/(\d+)', result.stdout)
-                if match:
-                    return match.group(2)  # Return CIDR prefix
+                if interface_match:
+                    interface = interface_match.group(1)
+                    # Get CIDR for that interface
+                    result = subprocess.run(['ip', 'addr', 'show', interface], capture_output=True, text=True)
+                    match = re.search(r'inet (\d+\.\d+\.\d+\.\d+)/(\d+)', result.stdout)
+                    if match:
+                        return match.group(2)  # Return CIDR prefix
 
-            return "24"
+                return "24"
 
         except Exception as e:
             return "24"
