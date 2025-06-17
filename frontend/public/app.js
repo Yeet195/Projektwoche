@@ -92,7 +92,7 @@ function initializeSocket() {
         socket.on('connect_error', (err) => {
             console.error('Connection error:', err);
             updateConnectionStatus(false);
-            showError('Failed to connect to scan server. Make sure the backend is running on port 5000.');
+            showError('Failed to connect to scan server. Make sure the backend is running on port 5050.');
         });
 
         // Scan events
