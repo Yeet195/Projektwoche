@@ -27,7 +27,7 @@ CORS(app, resources={
 # Configure SocketIO with proper CORS
 socketio = SocketIO(
     app,
-    cors_allowed_origins=["http://localhost:3000", "http://frontend:3000", "http://localhost:80"],
+    cors_allowed_origins=["http://localhost:3000", "http://frontend:3000", "http://localhost:80", "http://localhost"],
     async_mode='threading',
     logger=True,
     engineio_logger=True
