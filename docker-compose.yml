@@ -11,28 +11,20 @@ services:
   frontend:
     build: ./frontend
     container_name: svelte-frontend
+    network_mode: "host"
     dns:
       - 8.8.8.8
       - 1.1.1.1
     volumes:
       - ./frontend:/app
       - /app/node_modules
-    networks:
-      - app-network
 
   nginx:
     image: nginx:alpine
     container_name: nginx-proxy
-    ports:
-      - "80:80"
+    network_mode: "host"
     volumes:
       - ./nginx/default.conf:/etc/nginx/nginx.conf:ro
     depends_on:
       - frontend
       - backend
-    networks:
-      - app-network
-
-networks:
-  app-network:
-    driver: bridge
