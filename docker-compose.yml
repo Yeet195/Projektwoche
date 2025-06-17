@@ -2,8 +2,7 @@ services:
   backend:
     build: ./backend
     container_name: python-backend
-    ports:
-      - "5000:5000"
+    network_mode: "host"
     environment:
       - FLASK_ENV=production
     volumes:
@@ -16,7 +15,6 @@ services:
       - "3000:3000"
     volumes:
       - ./frontend:/app
-      - /app/node_modules
 
   nginx:
     image: nginx:alpine
