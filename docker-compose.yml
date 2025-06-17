@@ -2,32 +2,29 @@ services:
   backend:
     build: ./backend
     container_name: python-backend
-    network_mode: "host"
+    ports:
+      - "5000:5000"
     environment:
       - FLASK_ENV=production
     volumes:
       - ./backend:/app
-    restart: unless-stopped
 
   frontend:
     build: ./frontend
     container_name: vanilla-frontend
-    network_mode: "host"
-    dns:
-      - 8.8.8.8
-      - 1.1.1.1
+    ports:
+      - "3000:3000"
     volumes:
       - ./frontend:/app
       - /app/node_modules
-    restart: unless-stopped
 
   nginx:
     image: nginx:alpine
     container_name: nginx-proxy
-    network_mode: "host"
+    ports:
+      - "80:80"
     volumes:
       - ./nginx/default.conf:/etc/nginx/nginx.conf:ro
     depends_on:
       - frontend
       - backend
-    restart: unless-stopped
