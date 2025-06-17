@@ -7,22 +7,23 @@ services:
       - FLASK_ENV=production
     volumes:
       - ./backend:/app
+    restart: unless-stopped
 
   frontend:
     build: ./frontend
     container_name: vanilla-frontend
-    ports:
-      - "3000:3000"
+    network_mode: "host"
     volumes:
       - ./frontend:/app
+    restart: unless-stopped
 
   nginx:
     image: nginx:alpine
     container_name: nginx-proxy
-    ports:
-      - "80:80"
+    network_mode: "host"
     volumes:
       - ./nginx/default.conf:/etc/nginx/nginx.conf:ro
     depends_on:
       - frontend
       - backend
+    restart: unless-stopped
