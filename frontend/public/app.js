@@ -67,7 +67,7 @@ function setupEventListeners() {
 // Socket.IO initialization
 function initializeSocket() {
     try {
-        socket = io('http://localhost:5000', {
+        socket = io('http://localhost:5050', {
             transports: ['websocket', 'polling'],
             timeout: 20000,
             reconnection: true,
