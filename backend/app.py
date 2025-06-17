@@ -262,7 +262,7 @@ if __name__ == "__main__":
     print("Starting Flask-SocketIO server...")
     socketio.run(
         app,
-        debug=False,
+        debug=True,
         host='0.0.0.0',
         port=5000,
         allow_unsafe_werkzeug=True
