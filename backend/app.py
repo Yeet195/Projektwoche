@@ -264,6 +264,6 @@ if __name__ == "__main__":
         app,
         debug=True,
         host='0.0.0.0',
-        port=5000,
+        port=5050,
         allow_unsafe_werkzeug=True
     )

@@ -7,7 +7,7 @@ import sys
 import traceback
 from datetime import datetime
 
-PORT = int(os.environ.get('PORT', 3000))
+PORT = int(os.environ.get('PORT', 3030))
 DIRECTORY = 'public'
 
 class Handler(http.server.SimpleHTTPRequestHandler):
