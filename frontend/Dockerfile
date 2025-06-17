@@ -20,5 +20,5 @@ RUN npm install -g serve
 # Expose port
 EXPOSE 3000
 
-# Serve from output directory
-CMD ["serve", "-s", ".svelte-kit/output/client", "-l", "3000"]
+# Serve the static build directory
+CMD ["serve", "-s", "build", "-l", "3000"]
