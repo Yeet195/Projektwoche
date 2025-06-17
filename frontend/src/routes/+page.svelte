@@ -19,8 +19,12 @@
     let scanNotes = '';
 
     onMount(() => {
-        connectWebSocket();
-        // Request initial data
+        const backendUrl = typeof window !== 'undefined' && window.location.hostname !== 'localhost'
+            ? `http://${window.location.hostname}:5000`
+            : 'http://localhost:5000';
+
+        connectWebSocket(backendUrl);
+
         setTimeout(() => {
             requestScanHistory();
             requestStatistics();

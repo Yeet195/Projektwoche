@@ -15,7 +15,7 @@ export const statistics = writable({});
 // WebSocket instance
 let socket = null;
 
-export function connectWebSocket(url = '/socket.io') {
+export function connectWebSocket(url = 'http://localhost:5000') {
     if (socket) {
         socket.disconnect();
     }

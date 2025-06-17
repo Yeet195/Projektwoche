@@ -14,7 +14,7 @@ COPY . .
 # Build the application
 RUN npm run build
 
-# Install serve for production serving
+# Install simple HTTP server
 RUN npm install -g serve
 
 # Expose port
