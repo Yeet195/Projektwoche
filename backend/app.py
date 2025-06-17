@@ -211,6 +211,18 @@ class WebsocketNetworkScan(NetworkScan):
 
 scanner = WebsocketNetworkScan()
 
+@app.route('/')
+def health_check():
+    return {
+        'status': 'healthy',
+        'service': 'network-scanner-backend',
+        'version': '1.0.0'
+    }
+
+@app.route('/health')
+def health():
+    return {'status': 'ok'}
+
 @socketio.on('connect')
 def handle_connect():
     print('Client connected')

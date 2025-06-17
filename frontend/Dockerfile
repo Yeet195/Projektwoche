@@ -2,10 +2,10 @@ FROM node:18-alpine
 
 WORKDIR /app
 
-# Copy package files first for better caching
+# Copy package files
 COPY package*.json ./
 
-# Install ALL dependencies
+# Install dependencies
 RUN npm ci
 
 # Copy source code
@@ -14,11 +14,13 @@ COPY . .
 # Build the application
 RUN npm run build
 
-# Install simple HTTP server
+# Verify build exists
+RUN ls -la build/
+
+# Install serve to host the static files
 RUN npm install -g serve
 
-# Expose port
 EXPOSE 3000
 
-# Serve the static build directory
+# Serve the built files
 CMD ["serve", "-s", "build", "-l", "3000"]
