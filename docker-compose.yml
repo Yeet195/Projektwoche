@@ -2,17 +2,11 @@ services:
   backend:
     build: ./backend
     container_name: python-backend
-    dns:
-      - 8.8.8.8
-      - 1.1.1.1
+    network_mode: "host"
     environment:
       - FLASK_ENV=production
     volumes:
       - ./backend:/app
-    ports:
-      - "5000:5000"
-    networks:
-      - app-network
 
   frontend:
     build: ./frontend
