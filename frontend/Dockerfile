@@ -1,16 +1,13 @@
-FROM node:22-alpine
+FROM python:3.11-alpine
 
 WORKDIR /app
 
-# Copy package files
-COPY package*.json ./
-
-# Install dependencies
-RUN npm install --omit=dev
-
-# Copy source files
+# Copy application code
 COPY . .
+
+# Make server.py executable
+RUN chmod +x server.py
 
 EXPOSE 3000
 
-CMD ["node", "server.js"]
+CMD ["python", "server.py"]
