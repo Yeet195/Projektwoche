@@ -218,6 +218,30 @@ function initializeSocket() {
             }
         }, 1000);
 
+        // Auto scan events
+        socket.on('auto_scan_status', (data) => {
+            console.log('Auto scan status:', data);
+            updateAutoScanStatus(data);
+        });
+
+        socket.on('auto_scan_scheduled', (data) => {
+            console.log('Auto scan scheduled:', data);
+            showNotification(`Automatic scan scheduled for ${new Date(data.next_scan_time).toLocaleTimeString()}`);
+            updateAutoScanStatus({
+                enabled: true,
+                running: true,
+                next_scan_time: data.next_scan_time,
+                interval_minutes: data.interval_minutes
+            });
+        });
+
+        socket.on('auto_scan_toggled', (data) => {
+            console.log('Auto scan toggled:', data);
+            if (data.success) {
+                showNotification(`Automatic scanning ${data.running ? 'started' : 'stopped'}`);
+            }
+        });
+
     } catch (err) {
         console.error('Socket initialization error:', err);
         showError('Failed to initialize connection to scan server');
@@ -540,6 +564,17 @@ function formatDuration(seconds) {
     const minutes = Math.floor(seconds / 60);
     const remainingSeconds = seconds % 60;
     return `${minutes}m ${remainingSeconds.toFixed(0)}s`;
+}
+
+function updateAutoScanStatus(data) {
+    // You can add a UI element to show this information
+    // For example, add a status indicator in your header
+    const autoScanStatus = document.getElementById('autoScanStatus');
+    if (autoScanStatus && data.enabled && data.running) {
+        const nextScan = new Date(data.next_scan_time);
+        autoScanStatus.textContent = `Next auto-scan: ${nextScan.toLocaleTimeString()}`;
+        autoScanStatus.style.display = 'block';
+    }
 }
 
 // Initialize when DOM is loaded

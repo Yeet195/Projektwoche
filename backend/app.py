@@ -6,6 +6,7 @@ import threading
 import time
 import sys
 import os
+from datetime import datetime, timedelta
 
 from database import NetworkScanDB
 from main import NetworkScan
@@ -34,11 +35,15 @@ socketio = SocketIO(
 
 db = NetworkScanDB()
 
+auto_scan_thread = None
+auto_scan_running = False
+next_auto_scan_time = None
+
 class WebsocketNetworkScan(NetworkScan):
     def __init__(self):
         super().__init__()
 
-    def combined_scan_web(self, app, network_range=None, notes=None):
+    def combined_scan_web(self, app, network_range=None, notes=None, is_auto_scan=False):
         """
         Scan method for real-time updates via WebSocket
         """
@@ -56,9 +61,13 @@ class WebsocketNetworkScan(NetworkScan):
 
             try:
                 # Start scan
-                socketio.emit('scan_started', {'status': 'Starting network scan'})
+                scan_type = 'auto' if is_auto_scan else 'manual'
+                socketio.emit('scan_started', {
+                    'status': f'Starting {scan_type} network scan',
+                    'scan_type': scan_type
+                })
 
-                if network_range is None:
+                if network_range is None or network_range == 'auto':
                     current_ip = self.get_current_ip()
                     subnet = self.get_subnet()
 
@@ -74,7 +83,8 @@ class WebsocketNetworkScan(NetworkScan):
                     'phase': 'ping_sweep',
                     'message': f'Starting ping sweep of {total_hosts} hosts',
                     'progress': 0,
-                    'total': total_hosts
+                    'total': total_hosts,
+                    'scan_type': scan_type
                 })
 
                 # Ping sweep
@@ -108,7 +118,8 @@ class WebsocketNetworkScan(NetworkScan):
                             'progress': progress,
                             'total': total_hosts,
                             'current_ip': ip_str,
-                            'status': 'online' if is_online else 'offline'
+                            'status': 'online' if is_online else 'offline',
+                            'scan_type': scan_type
                         })
 
                         return ip_str, is_online
@@ -138,7 +149,8 @@ class WebsocketNetworkScan(NetworkScan):
                         'message': f'Starting port scan of {len(online_hosts)} online hosts',
                         'progress': 50,
                         'total': len(online_hosts),
-                        'online_hosts': len(online_hosts)
+                        'online_hosts': len(online_hosts),
+                        'scan_type': scan_type
                     })
 
                     completed_ports = 0
@@ -167,7 +179,8 @@ class WebsocketNetworkScan(NetworkScan):
                             'progress': progress,
                             'total': len(online_hosts),
                             'current_ip': ip,
-                            'open_ports': open_ports
+                            'open_ports': open_ports,
+                            'scan_type': scan_type
                         })
 
                         return ip, open_ports
@@ -198,6 +211,7 @@ class WebsocketNetworkScan(NetworkScan):
                     'results': results,
                     'duration': elapsed_time,
                     'network_range': network_range,
+                    'scan_type': scan_type,
                     'summary': {
                         'total_hosts': len(host_ips),
                         'online_hosts': len(online_hosts),
@@ -208,17 +222,82 @@ class WebsocketNetworkScan(NetworkScan):
                 return results
 
             except Exception as e:
-                socketio.emit('scan_error', {'error': str(e)})
+                socketio.emit('scan_error', {
+                    'error': str(e),
+                    'scan_type': scan_type
+                })
                 return results
 
 scanner = WebsocketNetworkScan()
+
+def auto_scan_worker():
+    """Worker thread for automatic scanning"""
+    global auto_scan_running, next_auto_scan_time
+
+    while auto_scan_running:
+        try:
+            # Get configuration
+            interval_minutes = int(config.return_var("auto_scan", "interval_minutes"))
+            network_range = config.return_var("auto_scan", "network_range")
+            notes = config.return_var("auto_scan", "notes")
+
+            # Update next scan time
+            next_auto_scan_time = datetime.now() + timedelta(minutes=interval_minutes)
+
+            # Emit auto scan scheduled notification
+            with app.app_context():
+                socketio.emit('auto_scan_scheduled', {
+                    'next_scan_time': next_auto_scan_time.isoformat(),
+                    'interval_minutes': interval_minutes
+                })
+
+            print(f"Starting automatic scan at {datetime.now()}")
+
+            # Perform the scan
+            scanner.combined_scan_web(
+                app=app,
+                network_range=network_range if network_range != 'auto' else None,
+                notes=f"{notes} - {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}",
+                is_auto_scan=True
+            )
+
+            print(f"Automatic scan completed. Next scan at {next_auto_scan_time}")
+
+            # Wait for the interval
+            time.sleep(interval_minutes * 60)
+
+        except Exception as e:
+            print(f"Error in auto scan worker: {e}")
+            time.sleep(60)
+
+def start_auto_scan():
+    """Start automatic scanning if enabled"""
+    global auto_scan_thread, auto_scan_running
+
+    if config.return_var("auto_scan", "enabled").lower() == "true":
+        if auto_scan_thread is None or not auto_scan_thread.is_alive():
+            auto_scan_running = True
+            auto_scan_thread = threading.Thread(target=auto_scan_worker, daemon=True)
+            auto_scan_thread.start()
+            print("Automatic scanning started")
+            return True
+    return False
+
+def stop_auto_scan():
+    """Stop automatic scanning"""
+    global auto_scan_running
+    auto_scan_running = False
+    print("Automatic scanning stopped")
 
 @app.route('/')
 def health_check():
     return {
         'status': 'healthy',
         'service': 'network-scanner-backend',
-        'version': '1.0.0'
+        'version': '1.0.0',
+        'auto_scan_enabled': config.return_var("auto_scan", "enabled").lower() == "true",
+        'auto_scan_running': auto_scan_running,
+        'next_auto_scan': next_auto_scan_time.isoformat() if next_auto_scan_time else None
     }
 
 @app.route('/health')
@@ -230,6 +309,15 @@ def handle_connect():
     print('Client connected')
     emit('connected', {'status': 'Connected to scan server'})
 
+    # Send auto scan status
+    if auto_scan_running and next_auto_scan_time:
+        emit('auto_scan_status', {
+            'enabled': True,
+            'running': True,
+            'next_scan_time': next_auto_scan_time.isoformat(),
+            'interval_minutes': int(config.return_var("auto_scan", "interval_minutes"))
+        })
+
 @socketio.on('disconnect')
 def handle_disconnect():
     print('Client disconnected')
@@ -237,13 +325,14 @@ def handle_disconnect():
 @socketio.on('start_scan')
 def handle_start_scan(data):
     network_range = data.get('network_range', None)
-    notes = data.get('notes', 'WebSocket Scan')
+    notes = data.get('notes', 'Manual WebSocket Scan')
 
     # Pass the app instance as the first argument
     socketio.start_background_task(target=scanner.combined_scan_web,
                                    app=app,
                                    network_range=network_range,
-                                   notes=notes)
+                                   notes=notes,
+                                   is_auto_scan=False)
 
 @socketio.on('get_scan_history')
 def handle_get_scan_history():
@@ -255,6 +344,33 @@ def handle_get_statistics():
     stats = db.get_statistics()
     emit('statistics', stats)
 
+@socketio.on('get_auto_scan_status')
+def handle_get_auto_scan_status():
+    emit('auto_scan_status', {
+        'enabled': config.return_var("auto_scan", "enabled").lower() == "true",
+        'running': auto_scan_running,
+        'next_scan_time': next_auto_scan_time.isoformat() if next_auto_scan_time else None,
+        'interval_minutes': int(config.return_var("auto_scan", "interval_minutes"))
+    })
+
+@socketio.on('toggle_auto_scan')
+def handle_toggle_auto_scan(data):
+    """Toggle automatic scanning on/off"""
+    action = data.get('action', 'toggle')
+
+    if action == 'start':
+        success = start_auto_scan()
+        emit('auto_scan_toggled', {
+            'running': auto_scan_running,
+            'success': success
+        })
+    elif action == 'stop':
+        stop_auto_scan()
+        emit('auto_scan_toggled', {
+            'running': auto_scan_running,
+            'success': True
+        })
+
 @app.route('/socket.io.js')
 def socket_io_js():
     """Serve Socket.IO client library"""
@@ -262,6 +378,10 @@ def socket_io_js():
 
 if __name__ == "__main__":
     print("Starting Flask-SocketIO server...")
+
+    # Start automatic scanning if enabled
+    start_auto_scan()
+
     socketio.run(
         app,
         debug=True,
