@@ -19,6 +19,6 @@ COPY . .
 # Create directory for database
 RUN mkdir -p /app/data
 
-EXPOSE 5050
+#EXPOSE 5050
 
 CMD ["python", "app.py"]
