@@ -72,18 +72,20 @@ function initializeSocket() {
             timeout: 20000,
             reconnection: true,
             reconnectionAttempts: 5,
-            reconnectionDelay: 1000
+            reconnectionDelay: 1000,
+            forceNew: true
         });
 
         // Connection events
         socket.on('connect', () => {
-            console.log('Connected to server');
+            console.log('Connected to server successfully');
+            console.log('Socket ID:', socket.id);
             updateConnectionStatus(true);
             clearError();
         });
 
-        socket.on('disconnect', () => {
-            console.log('Disconnected from server');
+        socket.on('disconnect', (reason) => {
+            console.log('Disconnected from server. Reason:', reason);
             updateConnectionStatus(false);
             isScanning = false;
             updateScanButton();
@@ -91,8 +93,10 @@ function initializeSocket() {
 
         socket.on('connect_error', (err) => {
             console.error('Connection error:', err);
+            console.error('Error type:', err.type);
+            console.error('Error description:', err.description);
             updateConnectionStatus(false);
-            showError('Failed to connect to scan server. Make sure the backend is running on port 5050.');
+            showError(`Failed to connect: ${err.message || 'Unknown error'}`);
         });
 
         // Scan events
