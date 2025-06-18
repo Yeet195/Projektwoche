@@ -38,7 +38,7 @@ class WebsocketNetworkScan(NetworkScan):
     def __init__(self):
         super().__init__()
 
-    def combined_scan_web(self, network_range=None, notes=None):
+    def combined_scan_web(self, app, network_range=None, notes=None):
         """
         Scan method for real-time updates via WebSocket
         """
@@ -156,7 +156,7 @@ class WebsocketNetworkScan(NetworkScan):
                                 s.close()
                             except Exception:
                                 continue
-                            time.sleep(0.001)
+                            time.sleep(0.01)
 
                         completed_ports += 1
                         progress = 50 + (completed_ports / len(online_hosts)) * 50  # Second half
@@ -239,6 +239,7 @@ def handle_start_scan(data):
     network_range = data.get('network_range', None)
     notes = data.get('notes', 'WebSocket Scan')
 
+    # Pass the app instance as the first argument
     socketio.start_background_task(target=scanner.combined_scan_web,
                                    app=app,
                                    network_range=network_range,
