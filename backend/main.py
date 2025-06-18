@@ -223,7 +223,7 @@ if __name__ == "__main__":
     networkScan = NetworkScan()
 
     # Perform scan and save to database
-    scan_results = networkScan.combined_scan(notes="Weekly network scan")
+    scan_results = networkScan.combined_scan(network_range="10.100.140.132/24",notes="Weekly network scan")
 
     # Show scan history
     networkScan.show_scan_history()
