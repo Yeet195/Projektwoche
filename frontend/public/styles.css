@@ -349,7 +349,7 @@ body {
 .results-table {
     width: 100%;
     border-collapse: collapse;
-    background-color: white;
+    background-color: #3c4960;
 }
 
 .results-table th {
