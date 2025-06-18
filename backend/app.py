@@ -18,7 +18,7 @@ FRONTEND_URL = config.return_var("frontend", "url")
 
 CORS(app, resources={
     r"/*": {
-        "origins": [FRONTEND_URL, "http://frontend:3000", "http://localhost:80", "http://localhost"],
+        "origins": [FRONTEND_URL, "http://frontend:3030", "http://localhost:80"],
         "methods": ["GET", "POST"],
         "allow_headers": ["Content-Type"]
     }
@@ -26,7 +26,7 @@ CORS(app, resources={
 
 socketio = SocketIO(
     app,
-    cors_allowed_origins=[FRONTEND_URL, "http://frontend:3000", "http://localhost:80", "http://localhost"],
+    cors_allowed_origins=[FRONTEND_URL, "http://frontend:3030", "http://localhost:80"],
     async_mode='threading',
     logger=True,
     engineio_logger=True
