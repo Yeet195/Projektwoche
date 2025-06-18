@@ -39,19 +39,78 @@ const elements = {
     notificationMessage: document.getElementById('notificationMessage')
 };
 
+console.log('App.js loaded, DOM ready state:', document.readyState);
+
 // Initialize the application
 function init() {
+    console.log('Initializing application...');
     setupEventListeners();
     initializeSocket();
+
+    // Add debugging after a short delay to ensure DOM is ready
+    setTimeout(() => {
+        debugEventListeners();
+    }, 1000);
+}
+
+function debugEventListeners() {
+    console.log('Debugging event listeners...');
+    console.log('Scan form element:', elements.scanForm);
+    console.log('Scan button element:', elements.scanButton);
+    console.log('Auto detect element:', elements.autoDetect);
+
+    // Test if the form exists and has the right event listener
+    if (elements.scanForm) {
+        console.log('Scan form found');
+    } else {
+        console.error('Scan form NOT found');
+    }
+
+    if (elements.scanButton) {
+        console.log('Scan button found');
+        console.log('Button disabled:', elements.scanButton.disabled);
+        console.log('Button class list:', elements.scanButton.classList.toString());
+    } else {
+        console.error('Scan button NOT found');
+    }
 }
 
 // Event listeners
 function setupEventListeners() {
-    elements.autoDetect.addEventListener('change', toggleNetworkRangeInput);
-    elements.scanForm.addEventListener('submit', handleScanSubmit);
-    elements.searchInput.addEventListener('input', filterResults);
-    elements.sortSelect.addEventListener('change', filterResults);
-    elements.refreshHistoryBtn.addEventListener('click', requestScanHistory);
+    console.log('Setting up event listeners...');
+
+    if (elements.autoDetect) {
+        elements.autoDetect.addEventListener('change', toggleNetworkRangeInput);
+        console.log('Auto detect listener added');
+    }
+
+    if (elements.scanForm) {
+        elements.scanForm.addEventListener('submit', handleScanSubmit);
+        console.log('Form submit listener added');
+    } else {
+        console.error('Scan form not found for event listener');
+    }
+
+    // Add a direct click listener to the button as backup
+    if (elements.scanButton) {
+        elements.scanButton.addEventListener('click', (e) => {
+            console.log('🖱Button clicked directly!', e);
+            if (e.target.type !== 'submit') {
+                handleScanSubmit(e);
+            }
+        });
+        console.log('Button click listener added as backup');
+    }
+
+    if (elements.searchInput) {
+        elements.searchInput.addEventListener('input', filterResults);
+    }
+    if (elements.sortSelect) {
+        elements.sortSelect.addEventListener('change', filterResults);
+    }
+    if (elements.refreshHistoryBtn) {
+        elements.refreshHistoryBtn.addEventListener('click', requestScanHistory);
+    }
 
     // Filter buttons
     document.querySelectorAll('.filter-btn').forEach(btn => {
@@ -62,6 +121,8 @@ function setupEventListeners() {
             filterResults();
         });
     });
+
+    console.log('Event listeners setup complete');
 }
 
 // Socket.IO initialization
@@ -381,27 +442,50 @@ function displayStatistics(stats) {
 
 // Event Handlers
 function handleScanSubmit(e) {
+    console.log('handleScanSubmit called!', e);
     e.preventDefault();
 
-    if (!isConnected || isScanning) return;
+    console.log('Connection status:', isConnected);
+    console.log('Scanning status:', isScanning);
+    console.log('Button disabled:', elements.scanButton.disabled);
+
+    if (!isConnected) {
+        console.error('Not connected to server');
+        showError('Not connected to server');
+        return;
+    }
+
+    if (isScanning) {
+        console.error('Already scanning');
+        showError('Scan already in progress');
+        return;
+    }
 
     const networkRange = elements.autoDetect.checked ? null : elements.networkRange.value.trim() || null;
     const notes = elements.notes.value.trim() || null;
+
+    console.log('Starting scan with:', { networkRange, notes });
 
     startScan(networkRange, notes);
 }
 
 // Socket Communication
 function startScan(networkRange, notes) {
+    console.log('startScan called with:', { networkRange, notes });
+
     if (socket && socket.connected) {
+        console.log('Socket is connected, emitting start_scan event');
         socket.emit('start_scan', {
             network_range: networkRange,
             notes: notes || 'Web UI Scan'
         });
+        console.log('start_scan event emitted');
     } else {
+        console.error('Socket not connected:', { socket, connected: socket?.connected });
         showError('Not connected to server');
     }
 }
+
 
 function requestScanHistory() {
     if (socket && socket.connected) {
