@@ -157,6 +157,45 @@
       </div>
     </section>
   </main>
+  <div id="scanDetailsModal" class="modal hidden">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h2>📊 Scan Details</h2>
+        <button class="modal-close" onclick="closeScanDetails()">×</button>
+      </div>
+      <div class="modal-body">
+        <div id="modalScanInfo" class="scan-info-section"></div>
+        <div id="modalStatsGrid" class="stats-grid"></div>
+        <div class="results-controls">
+          <div class="filter-buttons">
+            <button class="filter-btn active" data-filter="all" onclick="filterModalResults('all')">All</button>
+            <button class="filter-btn" data-filter="online" onclick="filterModalResults('online')">Online</button>
+            <button class="filter-btn" data-filter="offline" onclick="filterModalResults('offline')">Offline</button>
+          </div>
+          <div class="search-controls">
+            <input type="text" id="modalSearchInput" placeholder="Search IP addresses..." class="input search-input" oninput="filterModalResults()">
+            <select id="modalSortSelect" class="input" onchange="filterModalResults()">
+              <option value="ip">Sort by IP</option>
+              <option value="ports">Sort by Ports</option>
+            </select>
+          </div>
+        </div>
+        <div class="table-container">
+          <table class="results-table">
+            <thead>
+            <tr>
+              <th>IP Address</th>
+              <th>Status</th>
+              <th>Open Ports</th>
+            </tr>
+            </thead>
+            <tbody id="modalResultsBody">
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+  </div>
 </div>
 
 <script src="https://cdn.socket.io/4.8.1/socket.io.min.js"
