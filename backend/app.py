@@ -49,7 +49,7 @@ class WebsocketNetworkScan(NetworkScan):
         from concurrent.futures import ThreadPoolExecutor, as_completed
         from socket import socket, AF_INET, SOCK_STREAM
 
-        with current_app.app_context():
+        with app.app_context():
 
             results = {}
             start_time = time.time()
@@ -240,6 +240,7 @@ def handle_start_scan(data):
     notes = data.get('notes', 'WebSocket Scan')
 
     socketio.start_background_task(target=scanner.combined_scan_web,
+                                   app=app,
                                    network_range=network_range,
                                    notes=notes)
 
