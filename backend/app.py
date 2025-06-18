@@ -376,23 +376,6 @@ def socket_io_js():
     """Serve Socket.IO client library"""
     return redirect('https://cdn.socket.io/4.8.1/socket.io.min.js')
 
-@socketio.on('get_scan_details')
-def handle_get_scan_details(data):
-    scan_id = data.get('scan_id')
-    if not scan_id:
-        emit('scan_details', {'error': 'No scan ID provided'})
-        return
-
-    try:
-        scan_details = db.get_scan_results(scan_id)
-        if scan_details:
-            emit('scan_details', scan_details)
-        else:
-            emit('scan_details', {'error': 'Scan not found'})
-    except Exception as e:
-        print(f"Error fetching scan details: {e}")
-        emit('scan_details', {'error': str(e)})
-
 if __name__ == "__main__":
     print("Starting Flask-SocketIO server...")
 
