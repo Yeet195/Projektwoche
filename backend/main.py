@@ -19,18 +19,43 @@ class NetworkScan:
 
     def get_current_ip(self) -> str | Exception:
         try:
-            # First get default route interface IP
-            result = subprocess.run(['ip', 'route', 'get', '8.8.8.8'], capture_output=True, text=True)
-            import re
-            match = re.search(r'src (\d+\.\d+\.\d+\.\d+)', result.stdout)
-            if match:
-                return match.group(1)
+            import socket
+            import subprocess
 
-            # Fallback to socket method
-            with socket(AF_INET, SOCK_DGRAM) as s:
-                s.connect(("8.8.8.8", 80))
-                local_ip = s.getsockname()[0]
-            return local_ip
+            # socket
+            try:
+                with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as s:
+                    s.connect(("8.8.8.8", 80))
+                    local_ip = s.getsockname()[0]
+                    return local_ip
+            except Exception:
+                pass
+
+            # ip route command
+            try:
+                result = subprocess.run(['ip', 'route', 'get', '8.8.8.8'],
+                                        capture_output=True, text=True, timeout=5)
+                import re
+                match = re.search(r'src (\d+\.\d+\.\d+\.\d+)', result.stdout)
+                if match:
+                    return match.group(1)
+            except Exception:
+                pass
+
+            # hostname -I
+            try:
+                result = subprocess.run(['hostname', '-I'],
+                                        capture_output=True, text=True, timeout=5)
+                ips = result.stdout.strip().split()
+                for ip in ips:
+                    if not ip.startswith('127.') and '.' in ip:
+                        return ip
+            except Exception:
+                pass
+
+            # Method 4: Fallback to a known working IP
+            return self.config.return_var('scanner', 'fallback')
+
         except Exception as e:
             return e
 
