@@ -20,17 +20,21 @@ FRONTEND_URL = config.return_var("frontend", "url")
 CORS(app, resources={
     r"/*": {
         "origins": ["*"],
-        "methods": ["GET", "POST"],
-        "allow_headers": ["Content-Type"]
+        "methods": ["GET", "POST", "OPTIONS"],
+        "allow_headers": ["Content-Type", "Authorization"],
+        "supports_credentials": False
     }
 })
 
 socketio = SocketIO(
     app,
-    cors_allowed_origins=["*"],
+    cors_allowed_origins="*",
     async_mode='threading',
     logger=True,
-    engineio_logger=True
+    engineio_logger=True,
+    allow_upgrades=True,
+    ping_timeout=60,
+    ping_interval=25
 )
 
 db = NetworkScanDB()

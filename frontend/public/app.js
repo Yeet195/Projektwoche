@@ -80,7 +80,6 @@ function setupEventListeners() {
         elements.refreshHistoryBtn.addEventListener('click', requestScanHistory);
     }
 
-    // Filter buttons
     document.querySelectorAll('.filter-btn').forEach(btn => {
         btn.addEventListener('click', (e) => {
             document.querySelectorAll('.filter-btn').forEach(b => b.classList.remove('active'));
@@ -91,116 +90,225 @@ function setupEventListeners() {
     });
 }
 
-// Socket.IO initialization
 function initializeSocket() {
     try {
-        socket = io(`http://${window.location.hostname}:80`, {
+        const connectionInfo = detectConnectionEnvironment();
+        console.log('Connection environment detected:', connectionInfo);
+
+        socket = io(connectionInfo.serverUrl, {
             transports: ['websocket', 'polling'],
             timeout: 20000,
             reconnection: true,
-            reconnectionAttempts: 5,
+            reconnectionAttempts: 10,
             reconnectionDelay: 1000,
-            forceNew: true
+            reconnectionDelayMax: 5000,
+            forceNew: true,
+            path: '/socket.io/'
         });
 
-        // Connection events
+        // Connection events with enhanced logging
         socket.on('connect', () => {
+            console.log(`Connected successfully to ${connectionInfo.serverUrl}`);
             updateConnectionStatus(true);
             clearError();
         });
 
         socket.on('disconnect', (reason) => {
+            console.log(`Disconnected: ${reason}`);
             updateConnectionStatus(false);
             isScanning = false;
             updateScanButton();
         });
 
         socket.on('connect_error', (err) => {
-            console.error('Connection error:', err);
-            console.error('Error type:', err.type);
-            console.error('Error description:', err.description);
-            updateConnectionStatus(false);
-            showError(`Failed to connect: ${err.message || 'Unknown error'}`);
-        });
-
-        // Scan events
-        socket.on('connected', (data) => {
-            showNotification(data.status);
-        });
-
-        socket.on('scan_started', (data) => {
-            isScanning = true;
-            scanResults = {};
-            updateScanButton();
-            showProgressSection();
-            hideResultsSection();
-            updateProgress(0, 'initializing', data.status);
-        });
-
-        socket.on('scan_progress', (data) => {
-            updateProgress(data.progress, data.phase, data.message, data);
-        });
-
-        socket.on('scan_complete', (data) => {
-            isScanning = false;
-            scanResults = data.results || {};
-            updateScanButton();
-            hideProgressSection();
-            showResultsSection(data);
-            showNotification(`Scan completed! Found ${data.summary?.online_hosts || 0} online hosts.`);
-            requestScanHistory();
-            requestStatistics();
-        });
-
-        socket.on('scan_error', (data) => {
-            console.error('Scan error:', data);
-            isScanning = false;
-            updateScanButton();
-            hideProgressSection();
-            showError(data.error || 'An error occurred during scanning');
-        });
-
-        socket.on('scan_history', (data) => {
-            displayScanHistory(data || []);
-        });
-
-        socket.on('statistics', (data) => {
-            displayStatistics(data || {});
-        });
-
-        // Request initial data
-        setTimeout(() => {
-            if (isConnected) {
-                requestScanHistory();
-                requestStatistics();
-            }
-        }, 1000);
-
-        // Auto scan events
-        socket.on('auto_scan_status', (data) => {
-            updateAutoScanStatus(data);
-        });
-
-        socket.on('auto_scan_scheduled', (data) => {
-            showNotification(`Automatic scan scheduled for ${new Date(data.next_scan_time).toLocaleTimeString()}`);
-            updateAutoScanStatus({
-                enabled: true,
-                running: true,
-                next_scan_time: data.next_scan_time,
-                interval_minutes: data.interval_minutes
+            console.error('Connection error:', {
+                message: err.message,
+                description: err.description,
+                type: err.type,
+                context: err.context
             });
+
+            // Try fallback connection if primary fails
+            if (!connectionInfo.isFallback) {
+                console.log('Trying fallback connection...');
+                setTimeout(() => {
+                    tryFallbackConnection();
+                }, 2000);
+            }
+
+            updateConnectionStatus(false);
+            showError(`Connection failed: ${err.message || 'Unknown error'}`);
         });
 
-        socket.on('auto_scan_toggled', (data) => {
-            if (data.success) {
-                showNotification(`Automatic scanning ${data.running ? 'started' : 'stopped'}`);
-            }
-        });
+        // Rest of your existing socket event handlers...
+        setupSocketEventHandlers();
 
     } catch (err) {
         console.error('Socket initialization error:', err);
         showError('Failed to initialize connection to scan server');
     }
+}
+
+// Detect the best connection method based on environment
+function detectConnectionEnvironment() {
+    const hostname = window.location.hostname;
+    const port = window.location.port;
+    const protocol = window.location.protocol;
+
+    let serverUrl;
+    let connectionType;
+    if (port === '3030') {
+        // Direct frontend access - connect directly to backend
+        serverUrl = `${protocol}//${hostname}:5050`;
+        connectionType = 'direct-backend';
+    }
+    // Check if localhost/127.0.0.1 access
+    else if (hostname === 'localhost' || hostname === '127.0.0.1') {
+        serverUrl = `${protocol}//${hostname}:80`;
+        connectionType = 'local-nginx';
+    }
+    // Remote access
+    else {
+        serverUrl = `${protocol}//${hostname}${port && port !== '80' ? ':' + port : ''}`;
+        connectionType = 'remote-nginx';
+    }
+
+    return {
+        serverUrl,
+        connectionType,
+        hostname,
+        port,
+        isFallback: false
+    };
+}
+
+// Fallback connection attempts
+function tryFallbackConnection() {
+    const hostname = window.location.hostname;
+    const protocol = window.location.protocol;
+
+    // Try different connection URLs as fallbacks
+    const fallbackUrls = [
+        `${protocol}//${hostname}:5050`,
+        `${protocol}//${hostname}:80`,
+        `${protocol}//localhost:80`,
+        `${protocol}//127.0.0.1:80`
+    ];
+
+    let currentFallback = 0;
+
+    function attemptFallback() {
+        if (currentFallback >= fallbackUrls.length) {
+            showError('All connection attempts failed. Please check server status.');
+            return;
+        }
+
+        const fallbackUrl = fallbackUrls[currentFallback];
+        console.log(`🔄 Attempting fallback connection ${currentFallback + 1}: ${fallbackUrl}`);
+
+        if (socket) {
+            socket.disconnect();
+        }
+
+        socket = io(fallbackUrl, {
+            transports: ['websocket', 'polling'],
+            timeout: 10000,
+            reconnection: false, // Disable auto-reconnection for fallback attempts
+            forceNew: true,
+            path: '/socket.io/'
+        });
+
+        socket.on('connect', () => {
+            console.log(`✅ Fallback connection successful: ${fallbackUrl}`);
+            updateConnectionStatus(true);
+            clearError();
+            setupSocketEventHandlers(); // Re-setup event handlers
+        });
+
+        socket.on('connect_error', () => {
+            currentFallback++;
+            setTimeout(attemptFallback, 2000);
+        });
+    }
+
+    attemptFallback();
+}
+
+// Setup all socket event handlers
+function setupSocketEventHandlers() {
+    // Scan events
+    socket.on('connected', (data) => {
+        showNotification(data.status);
+    });
+
+    socket.on('scan_started', (data) => {
+        isScanning = true;
+        scanResults = {};
+        updateScanButton();
+        showProgressSection();
+        hideResultsSection();
+        updateProgress(0, 'initializing', data.status);
+    });
+
+    socket.on('scan_progress', (data) => {
+        updateProgress(data.progress, data.phase, data.message, data);
+    });
+
+    socket.on('scan_complete', (data) => {
+        isScanning = false;
+        scanResults = data.results || {};
+        updateScanButton();
+        hideProgressSection();
+        showResultsSection(data);
+        showNotification(`Scan completed! Found ${data.summary?.online_hosts || 0} online hosts.`);
+        requestScanHistory();
+        requestStatistics();
+    });
+
+    socket.on('scan_error', (data) => {
+        console.error('Scan error:', data);
+        isScanning = false;
+        updateScanButton();
+        hideProgressSection();
+        showError(data.error || 'An error occurred during scanning');
+    });
+
+    socket.on('scan_history', (data) => {
+        displayScanHistory(data || []);
+    });
+
+    socket.on('statistics', (data) => {
+        displayStatistics(data || {});
+    });
+
+    // Auto scan events
+    socket.on('auto_scan_status', (data) => {
+        updateAutoScanStatus(data);
+    });
+
+    socket.on('auto_scan_scheduled', (data) => {
+        showNotification(`Automatic scan scheduled for ${new Date(data.next_scan_time).toLocaleTimeString()}`);
+        updateAutoScanStatus({
+            enabled: true,
+            running: true,
+            next_scan_time: data.next_scan_time,
+            interval_minutes: data.interval_minutes
+        });
+    });
+
+    socket.on('auto_scan_toggled', (data) => {
+        if (data.success) {
+            showNotification(`Automatic scanning ${data.running ? 'started' : 'stopped'}`);
+        }
+    });
+
+    // Request initial data
+    setTimeout(() => {
+        if (isConnected) {
+            requestScanHistory();
+            requestStatistics();
+        }
+    }, 1000);
 }
 
 // UI Update Functions
@@ -209,6 +317,12 @@ function updateConnectionStatus(connected) {
     elements.statusIndicator.classList.toggle('connected', connected);
     elements.statusText.textContent = connected ? 'Connected' : 'Disconnected';
     elements.scanButton.disabled = !connected || isScanning;
+
+    const connectionInfo = document.getElementById('connectionInfo');
+    if (connectionInfo && connected && socket) {
+        const hostname = window.location.hostname;
+        connectionInfo.textContent = `(${hostname})`;
+    }
 }
 
 function updateScanButton() {
