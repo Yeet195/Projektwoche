@@ -13,6 +13,8 @@ services:
     build: ./frontend
     container_name: vanilla-frontend
     network_mode: "host"
+    ports:
+      - "5050:3030"
     volumes:
       - ./frontend:/app
     restart: unless-stopped
