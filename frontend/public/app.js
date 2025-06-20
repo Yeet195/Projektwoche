@@ -90,25 +90,36 @@ function setupEventListeners() {
     });
 }
 
+// Simplified Socket.IO initialization
 function initializeSocket() {
     try {
-        const connectionInfo = detectConnectionEnvironment();
-        console.log('Connection environment detected:', connectionInfo);
+        // Simple detection logic
+        const hostname = window.location.hostname;
+        const port = window.location.port;
 
-        socket = io(connectionInfo.serverUrl, {
+        let serverUrl;
+        if (port === '3030') {
+            // Direct frontend access - connect to backend directly
+            serverUrl = `http://${hostname}:5050`;
+        } else {
+            // Via nginx proxy
+            serverUrl = `http://${hostname}:80`;
+        }
+
+        console.log(`Attempting to connect to: ${serverUrl}`);
+
+        socket = io(serverUrl, {
             transports: ['websocket', 'polling'],
             timeout: 20000,
             reconnection: true,
-            reconnectionAttempts: 10,
+            reconnectionAttempts: 5,
             reconnectionDelay: 1000,
-            reconnectionDelayMax: 5000,
-            forceNew: true,
-            path: '/socket.io/'
+            forceNew: true
         });
 
-        // Connection events with enhanced logging
+        // Connection events
         socket.on('connect', () => {
-            console.log(`Connected successfully to ${connectionInfo.serverUrl}`);
+            console.log(`Connected successfully to ${serverUrl}`);
             updateConnectionStatus(true);
             clearError();
         });
@@ -124,24 +135,85 @@ function initializeSocket() {
             console.error('Connection error:', {
                 message: err.message,
                 description: err.description,
-                type: err.type,
-                context: err.context
+                type: err.type
             });
-
-            // Try fallback connection if primary fails
-            if (!connectionInfo.isFallback) {
-                console.log('Trying fallback connection...');
-                setTimeout(() => {
-                    tryFallbackConnection();
-                }, 2000);
-            }
-
             updateConnectionStatus(false);
             showError(`Connection failed: ${err.message || 'Unknown error'}`);
         });
 
-        // Rest of your existing socket event handlers...
-        setupSocketEventHandlers();
+        // Scan events
+        socket.on('connected', (data) => {
+            showNotification(data.status);
+        });
+
+        socket.on('scan_started', (data) => {
+            isScanning = true;
+            scanResults = {};
+            updateScanButton();
+            showProgressSection();
+            hideResultsSection();
+            updateProgress(0, 'initializing', data.status);
+        });
+
+        socket.on('scan_progress', (data) => {
+            updateProgress(data.progress, data.phase, data.message, data);
+        });
+
+        socket.on('scan_complete', (data) => {
+            isScanning = false;
+            scanResults = data.results || {};
+            updateScanButton();
+            hideProgressSection();
+            showResultsSection(data);
+            showNotification(`Scan completed! Found ${data.summary?.online_hosts || 0} online hosts.`);
+            requestScanHistory();
+            requestStatistics();
+        });
+
+        socket.on('scan_error', (data) => {
+            console.error('Scan error:', data);
+            isScanning = false;
+            updateScanButton();
+            hideProgressSection();
+            showError(data.error || 'An error occurred during scanning');
+        });
+
+        socket.on('scan_history', (data) => {
+            displayScanHistory(data || []);
+        });
+
+        socket.on('statistics', (data) => {
+            displayStatistics(data || {});
+        });
+
+        // Auto scan events
+        socket.on('auto_scan_status', (data) => {
+            updateAutoScanStatus(data);
+        });
+
+        socket.on('auto_scan_scheduled', (data) => {
+            showNotification(`Automatic scan scheduled for ${new Date(data.next_scan_time).toLocaleTimeString()}`);
+            updateAutoScanStatus({
+                enabled: true,
+                running: true,
+                next_scan_time: data.next_scan_time,
+                interval_minutes: data.interval_minutes
+            });
+        });
+
+        socket.on('auto_scan_toggled', (data) => {
+            if (data.success) {
+                showNotification(`Automatic scanning ${data.running ? 'started' : 'stopped'}`);
+            }
+        });
+
+        // Request initial data
+        setTimeout(() => {
+            if (isConnected) {
+                requestScanHistory();
+                requestStatistics();
+            }
+        }, 1000);
 
     } catch (err) {
         console.error('Socket initialization error:', err);
