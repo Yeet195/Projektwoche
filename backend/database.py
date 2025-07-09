@@ -5,8 +5,12 @@ from typing import Dict, List, Optional
 
 
 class NetworkScanDB:
-    def __init__(self, db_path: str = "network_scans.db"):
-        self.db_path = db_path
+    def __init__(self, db_path: str = None):
+    	if db_path is None:
+            base_dir = os.path.dirname(os.path.abspath(__file__))
+            self.db_path = os.path.join(base_dir, "network_scans.db")
+        else:
+            self.db_path = db_path
         self.init_database()
 
     def init_database(self):
