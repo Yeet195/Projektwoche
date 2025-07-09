@@ -1,168 +1,198 @@
 <!DOCTYPE html>
 <html lang="en">
-<head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>SPION</title>
-  <link rel="stylesheet" href="styles.css">
-</head>
-<body>
-<div class="container">
-  <header class="header">
-    <h1>SPION</h1>
-    <div class="connection-status">
-      <span class="status-indicator" id="statusIndicator"></span>
-      <span id="statusText">Connecting...</span>
-      <span id="connectionInfo" style="font-size: 0.8em; margin-left: 10px; opacity: 0.7;"></span>
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>SPION</title>
+    <link rel="stylesheet" href="styles.css" />
+  </head>
+  <body>
+    <div class="container">
+      <header class="header">
+        <h1>SPION</h1>
+        <div class="connection-status">
+          <span class="status-indicator" id="statusIndicator"></span>
+          <span id="statusText">Connecting...</span>
+          <span
+            id="connectionInfo"
+            style="font-size: 0.8em; margin-left: 10px; opacity: 0.7"
+          ></span>
+        </div>
+      </header>
+
+      <!-- Error Display -->
+      <div id="errorContainer" class="error-container hidden">
+        <div class="error-content">
+          <span class="error-icon">⚠️</span>
+          <span id="errorMessage"></span>
+          <button class="error-close" onclick="clearError()">×</button>
+        </div>
+      </div>
+
+      <!-- Notification Display -->
+      <div id="notificationContainer" class="notification-container hidden">
+        <div class="notification-content">
+          <span class="notification-icon">✅</span>
+          <span id="notificationMessage"></span>
+          <button class="notification-close" onclick="clearNotification()">
+            ×
+          </button>
+        </div>
+      </div>
+
+      <main class="main">
+        <!-- Scanner Control Panel -->
+        <section class="card">
+          <h2>🚀 Start Network Scan</h2>
+          <form id="scanForm" class="scan-form">
+            <div class="input-group">
+              <label class="checkbox-container">
+                <input type="checkbox" id="autoDetect" checked />
+                <span class="checkmark"></span>
+                Auto-detect network range
+              </label>
+            </div>
+
+            <div
+              class="input-group"
+              id="networkRangeGroup"
+              style="display: none"
+            >
+              <label for="networkRange">Network Range (CIDR)</label>
+              <input
+                type="text"
+                id="networkRange"
+                placeholder="e.g., 192.168.1.0/24"
+                class="input"
+              />
+              <small>Enter network range in CIDR notation</small>
+            </div>
+
+            <div class="input-group">
+              <label for="notes">Notes (optional)</label>
+              <input
+                type="text"
+                id="notes"
+                placeholder="Weekly scan, security audit, etc."
+                class="input"
+              />
+            </div>
+
+            <button type="submit" id="scanButton" class="btn btn-primary">
+              <span class="btn-content">
+                <span class="btn-icon">🔍</span>
+                <span class="btn-text">Start Scan</span>
+              </span>
+            </button>
+          </form>
+        </section>
+
+        <!-- Progress Section -->
+        <section id="progressSection" class="card hidden">
+          <h2>📊 Scan Progress</h2>
+          <div class="progress-container">
+            <div class="progress-header">
+              <span id="progressPhase">Initializing...</span>
+              <span id="progressPercent">0%</span>
+            </div>
+            <div class="progress-bar">
+              <div id="progressFill" class="progress-fill"></div>
+            </div>
+            <div id="progressMessage" class="progress-message">
+              Preparing scan...
+            </div>
+            <div id="progressDetails" class="progress-details"></div>
+          </div>
+        </section>
+
+        <!-- Results Section -->
+        <section id="resultsSection" class="card hidden">
+          <div class="results-header">
+            <h2>📋 Scan Results</h2>
+            <div id="scanSummary" class="scan-summary"></div>
+          </div>
+
+          <!-- Summary Stats -->
+          <div id="statsGrid" class="stats-grid hidden">
+            <div class="stat-card stat-blue">
+              <div class="stat-number" id="totalHosts">0</div>
+              <div class="stat-label">Total Hosts</div>
+            </div>
+            <div class="stat-card stat-green">
+              <div class="stat-number" id="onlineHosts">0</div>
+              <div class="stat-label">Online Hosts</div>
+            </div>
+            <div class="stat-card stat-yellow">
+              <div class="stat-number" id="hostsWithPorts">0</div>
+              <div class="stat-label">With Open Ports</div>
+            </div>
+          </div>
+
+          <!-- Results Controls -->
+          <div class="results-controls">
+            <div class="filter-buttons">
+              <button class="filter-btn active" data-filter="all">All</button>
+              <button class="filter-btn" data-filter="online">Online</button>
+              <button class="filter-btn" data-filter="offline">Offline</button>
+            </div>
+            <div class="search-controls">
+              <input
+                type="text"
+                id="searchInput"
+                placeholder="Search IP addresses or hostnames..."
+                class="input search-input"
+              />
+              <select id="sortSelect" class="input">
+                <option value="ip">Sort by IP</option>
+                <option value="hostname">Sort by Hostname</option>
+                <option value="ports">Sort by Ports</option>
+              </select>
+            </div>
+          </div>
+
+          <!-- Results Table -->
+          <div class="table-container">
+            <table id="resultsTable" class="results-table">
+              <thead>
+                <tr>
+                  <th>IP Address</th>
+                  <th>Hostname</th>
+                  <th>Status</th>
+                  <th>Open Ports</th>
+                </tr>
+              </thead>
+              <tbody id="resultsBody"></tbody>
+            </table>
+          </div>
+        </section>
+
+        <!-- History Section -->
+        <section id="historySection" class="card">
+          <h2>📚 Scan History</h2>
+          <div class="history-controls">
+            <button id="refreshHistoryBtn" class="btn btn-secondary">
+              🔄 Refresh
+            </button>
+          </div>
+          <div id="historyContainer" class="history-container">
+            <p class="loading-text">Loading scan history...</p>
+          </div>
+        </section>
+
+        <!-- Statistics Section -->
+        <section id="statisticsSection" class="card">
+          <h2>📈 Statistics</h2>
+          <div id="statisticsContainer" class="statistics-container">
+            <p class="loading-text">Loading statistics...</p>
+          </div>
+        </section>
+      </main>
     </div>
-  </header>
 
-  <!-- Error Display -->
-  <div id="errorContainer" class="error-container hidden">
-    <div class="error-content">
-      <span class="error-icon">⚠️</span>
-      <span id="errorMessage"></span>
-      <button class="error-close" onclick="clearError()">×</button>
-    </div>
-  </div>
-
-  <!-- Notification Display -->
-  <div id="notificationContainer" class="notification-container hidden">
-    <div class="notification-content">
-      <span class="notification-icon">✅</span>
-      <span id="notificationMessage"></span>
-      <button class="notification-close" onclick="clearNotification()">×</button>
-    </div>
-  </div>
-
-  <main class="main">
-    <!-- Scanner Control Panel -->
-    <section class="card">
-      <h2>🚀 Start Network Scan</h2>
-      <form id="scanForm" class="scan-form">
-        <div class="input-group">
-          <label class="checkbox-container">
-            <input type="checkbox" id="autoDetect" checked>
-            <span class="checkmark"></span>
-            Auto-detect network range
-          </label>
-        </div>
-
-        <div class="input-group" id="networkRangeGroup" style="display: none;">
-          <label for="networkRange">Network Range (CIDR)</label>
-          <input type="text" id="networkRange" placeholder="e.g., 192.168.1.0/24" class="input">
-          <small>Enter network range in CIDR notation</small>
-        </div>
-
-        <div class="input-group">
-          <label for="notes">Notes (optional)</label>
-          <input type="text" id="notes" placeholder="Weekly scan, security audit, etc." class="input">
-        </div>
-
-        <button type="submit" id="scanButton" class="btn btn-primary">
-          <span class="btn-content">
-              <span class="btn-icon">🔍</span>
-              <span class="btn-text">Start Scan</span>
-          </span>
-        </button>
-      </form>
-    </section>
-
-    <!-- Progress Section -->
-    <section id="progressSection" class="card hidden">
-      <h2>📊 Scan Progress</h2>
-      <div class="progress-container">
-        <div class="progress-header">
-          <span id="progressPhase">Initializing...</span>
-          <span id="progressPercent">0%</span>
-        </div>
-        <div class="progress-bar">
-          <div id="progressFill" class="progress-fill"></div>
-        </div>
-        <div id="progressMessage" class="progress-message">Preparing scan...</div>
-        <div id="progressDetails" class="progress-details"></div>
-      </div>
-    </section>
-
-    <!-- Results Section -->
-    <section id="resultsSection" class="card hidden">
-      <div class="results-header">
-        <h2>📋 Scan Results</h2>
-        <div id="scanSummary" class="scan-summary"></div>
-      </div>
-
-      <!-- Summary Stats -->
-      <div id="statsGrid" class="stats-grid hidden">
-        <div class="stat-card stat-blue">
-          <div class="stat-number" id="totalHosts">0</div>
-          <div class="stat-label">Total Hosts</div>
-        </div>
-        <div class="stat-card stat-green">
-          <div class="stat-number" id="onlineHosts">0</div>
-          <div class="stat-label">Online Hosts</div>
-        </div>
-        <div class="stat-card stat-yellow">
-          <div class="stat-number" id="hostsWithPorts">0</div>
-          <div class="stat-label">With Open Ports</div>
-        </div>
-      </div>
-
-      <!-- Results Controls -->
-      <div class="results-controls">
-        <div class="filter-buttons">
-          <button class="filter-btn active" data-filter="all">All</button>
-          <button class="filter-btn" data-filter="online">Online</button>
-          <button class="filter-btn" data-filter="offline">Offline</button>
-        </div>
-        <div class="search-controls">
-          <input type="text" id="searchInput" placeholder="Search IP addresses..." class="input search-input">
-          <select id="sortSelect" class="input">
-            <option value="ip">Sort by IP</option>
-            <option value="ports">Sort by Ports</option>
-          </select>
-        </div>
-      </div>
-
-      <!-- Results Table -->
-      <div class="table-container">
-        <table id="resultsTable" class="results-table">
-          <thead>
-          <tr>
-            <th>IP Address</th>
-            <th>Status</th>
-            <th>Open Ports</th>
-          </tr>
-          </thead>
-          <tbody id="resultsBody">
-          </tbody>
-        </table>
-      </div>
-    </section>
-
-    <!-- History Section -->
-    <section id="historySection" class="card">
-      <h2>📚 Scan History</h2>
-      <div class="history-controls">
-        <button id="refreshHistoryBtn" class="btn btn-secondary">🔄 Refresh</button>
-      </div>
-      <div id="historyContainer" class="history-container">
-        <p class="loading-text">Loading scan history...</p>
-      </div>
-    </section>
-
-    <!-- Statistics Section -->
-    <section id="statisticsSection" class="card">
-      <h2>📈 Statistics</h2>
-      <div id="statisticsContainer" class="statistics-container">
-        <p class="loading-text">Loading statistics...</p>
-      </div>
-    </section>
-  </main>
-</div>
-
-<script src="https://cdn.socket.io/4.7.5/socket.io.min.js"
-        crossorigin="anonymous">
-</script>
-<script src="app.js"></script>
-</body>
+    <script
+      src="https://cdn.socket.io/4.7.5/socket.io.min.js"
+      crossorigin="anonymous"
+    ></script>
+    <script src="app.js"></script>
+  </body>
 </html>

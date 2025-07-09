@@ -1,12 +1,13 @@
 import sqlite3
 import json
+import os
 from datetime import datetime
 from typing import Dict, List, Optional
 
 
 class NetworkScanDB:
     def __init__(self, db_path: str = None):
-    	if db_path is None:
+        if db_path is None:
             base_dir = os.path.dirname(os.path.abspath(__file__))
             self.db_path = os.path.join(base_dir, "network_scans.db")
         else:
@@ -37,12 +38,19 @@ class NetworkScanDB:
                     id INTEGER PRIMARY KEY AUTOINCREMENT,
                     scan_id INTEGER,
                     ip_address TEXT NOT NULL,
+                    hostname TEXT,
                     status TEXT NOT NULL,
                     open_ports TEXT,  -- JSON string of port list
                     scan_timestamp TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                     FOREIGN KEY (scan_id) REFERENCES scans (id)
                 )
             ''')
+
+            # Add hostname column to existing scan_results table if it doesn't exist
+            cursor.execute("PRAGMA table_info(scan_results)")
+            columns = [column[1] for column in cursor.fetchall()]
+            if 'hostname' not in columns:
+                cursor.execute('ALTER TABLE scan_results ADD COLUMN hostname TEXT')
 
             # Create index for faster queries
             cursor.execute('''
@@ -62,7 +70,7 @@ class NetworkScanDB:
         """
         Save scan results to database
 
-        :param results: Dictionary with IP results {ip: {"status": "online/offline", "ports": [...]}}
+        :param results: Dictionary with IP results {ip: {"status": "online/offline", "ports": [...], "hostname": "..."}}
         :param network_range: Network range that was scanned
         :param scan_duration: Time taken for the scan
         :param notes: Optional notes about the scan
@@ -86,10 +94,11 @@ class NetworkScanDB:
             # Insert individual host results
             for ip, data in results.items():
                 ports_json = json.dumps(data["ports"]) if data["ports"] else "[]"
+                hostname = data.get("hostname", "Unknown")
                 cursor.execute('''
-                    INSERT INTO scan_results (scan_id, ip_address, status, open_ports)
-                    VALUES (?, ?, ?, ?)
-                ''', (scan_id, ip, data["status"], ports_json))
+                    INSERT INTO scan_results (scan_id, ip_address, hostname, status, open_ports)
+                    VALUES (?, ?, ?, ?, ?)
+                ''', (scan_id, ip, hostname, data["status"], ports_json))
 
             conn.commit()
             return scan_id
@@ -139,7 +148,7 @@ class NetworkScanDB:
 
             # Get scan results
             cursor.execute('''
-                SELECT ip_address, status, open_ports, scan_timestamp
+                SELECT ip_address, hostname, status, open_ports, scan_timestamp
                 FROM scan_results 
                 WHERE scan_id = ?
                 ORDER BY ip_address
@@ -147,11 +156,12 @@ class NetworkScanDB:
 
             results = {}
             for row in cursor.fetchall():
-                ip, status, ports_json, timestamp = row
+                ip, hostname, status, ports_json, timestamp = row
                 ports = json.loads(ports_json) if ports_json else []
                 results[ip] = {
                     "status": status,
                     "ports": ports,
+                    "hostname": hostname or "Unknown",
                     "timestamp": timestamp
                 }
 
@@ -172,7 +182,7 @@ class NetworkScanDB:
         with sqlite3.connect(self.db_path) as conn:
             cursor = conn.cursor()
             cursor.execute('''
-                SELECT s.scan_date, sr.status, sr.open_ports, s.network_range, sr.scan_id
+                SELECT s.scan_date, sr.hostname, sr.status, sr.open_ports, s.network_range, sr.scan_id
                 FROM scan_results sr
                 JOIN scans s ON sr.scan_id = s.id
                 WHERE sr.ip_address = ?
@@ -182,10 +192,11 @@ class NetworkScanDB:
 
             history = []
             for row in cursor.fetchall():
-                scan_date, status, ports_json, network_range, scan_id = row
+                scan_date, hostname, status, ports_json, network_range, scan_id = row
                 ports = json.loads(ports_json) if ports_json else []
                 history.append({
                     "scan_date": scan_date,
+                    "hostname": hostname or "Unknown",
                     "status": status,
                     "ports": ports,
                     "network_range": network_range,
@@ -208,7 +219,7 @@ class NetworkScanDB:
                 scan_id = result[0]
 
             cursor.execute('''
-                SELECT ip_address, open_ports, scan_timestamp
+                SELECT ip_address, hostname, open_ports, scan_timestamp
                 FROM scan_results 
                 WHERE scan_id = ? AND status = 'online'
                 ORDER BY ip_address
@@ -216,10 +227,11 @@ class NetworkScanDB:
 
             hosts = []
             for row in cursor.fetchall():
-                ip, ports_json, timestamp = row
+                ip, hostname, ports_json, timestamp = row
                 ports = json.loads(ports_json) if ports_json else []
                 hosts.append({
                     "ip": ip,
+                    "hostname": hostname or "Unknown",
                     "ports": ports,
                     "timestamp": timestamp
                 })

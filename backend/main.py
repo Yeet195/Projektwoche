@@ -17,6 +17,19 @@ class NetworkScan:
         self.ports = self.config.return_list("scanner", "ports", "int")
         self.db = NetworkScanDB()
 
+    def get_hostname_from_ip(self, ip: str) -> str:
+        """
+        Resolve IP address to hostname using socket.gethostbyaddr()
+        Works on both Windows and Linux
+        """
+        try:
+            hostname, _, _ = gethostbyaddr(ip)
+            return hostname
+        except (herror, gaierror, timeout):
+            return "Unknown"
+        except Exception:
+            return "Unknown"
+
     def get_current_ip(self) -> str | Exception:
         try:
             import socket
@@ -101,6 +114,7 @@ class NetworkScan:
                       save_to_db: bool = True, notes: str = None) -> dict:
         """
         Perform ping sweep first, then port scan only on online hosts
+        Now includes hostname resolution
         Returns results and optionally saves to database
         """
 
@@ -125,8 +139,8 @@ class NetworkScan:
             except Exception:
                 return ip_str, False
 
-        def scan_ip_ports(ip: str) -> tuple[str, list[int]]:
-            """Scan all ports for an IP address"""
+        def scan_ip_ports_and_hostname(ip: str) -> tuple[str, list[int], str]:
+            """Scan all ports for an IP address and get hostname"""
             scanned_ports = []
             for port in self.ports:
                 try:
@@ -139,7 +153,11 @@ class NetworkScan:
                 except Exception:
                     continue
                 time.sleep(0.01)
-            return ip, scanned_ports
+            
+            # Get hostname
+            hostname = self.get_hostname_from_ip(ip)
+            
+            return ip, scanned_ports, hostname
 
         # Initialize results dictionary
         results = {}
@@ -170,23 +188,24 @@ class NetworkScan:
                         ip, is_online = future.result()
                         if is_online:
                             online_hosts.append(ip)
-                            results[ip] = {"status": "online", "ports": []}
+                            results[ip] = {"status": "online", "ports": [], "hostname": "Unknown"}
                         else:
-                            results[ip] = {"status": "offline", "ports": []}
+                            results[ip] = {"status": "offline", "ports": [], "hostname": "Unknown"}
                     except Exception:
                         continue
 
-            print(f"Found {len(online_hosts)} online hosts. Starting port scan...")
+            print(f"Found {len(online_hosts)} online hosts. Starting port scan and hostname resolution...")
 
-            # Step 2: Port scan only online hosts
+            # Step 2: Port scan and hostname resolution for online hosts
             if online_hosts:
                 with ThreadPoolExecutor(max_workers=self.threads) as executor:
-                    futures = [executor.submit(scan_ip_ports, ip) for ip in online_hosts]
+                    futures = [executor.submit(scan_ip_ports_and_hostname, ip) for ip in online_hosts]
 
                     for future in as_completed(futures):
                         try:
-                            ip, open_ports = future.result()
+                            ip, open_ports, hostname = future.result()
                             results[ip]["ports"] = open_ports
+                            results[ip]["hostname"] = hostname
                         except Exception as e:
                             print(f"Error scanning IP {ip}: {e}")
 
@@ -242,24 +261,9 @@ class NetworkScan:
             print(f"Date: {entry['scan_date']} | Status: {entry['status']}")
             if entry['ports']:
                 print(f"Open Ports: {entry['ports']}")
+            if entry.get('hostname'):
+                print(f"Hostname: {entry['hostname']}")
             print("-" * 60)
 
 if __name__ == "__main__":
     networkScan = NetworkScan()
-
-    # Perform scan and save to database
-    scan_results = networkScan.combined_scan(network_range="10.100.140.132/24",notes="Weekly network scan")
-
-    # Show scan history
-    networkScan.show_scan_history()
-
-    # Show database statistics
-    stats = networkScan.db.get_statistics()
-    print(f"\nDatabase Statistics:")
-    print(f"Total scans: {stats['total_scans']}")
-    print(f"Unique IPs scanned: {stats['unique_ips_scanned']}")
-    print(f"Last scan: {stats['last_scan_date']}")
-    print(f"Average online hosts per scan: {stats['average_online_hosts']}")
-
-    # Example: Show history for a specific IP
-    # networkScan.show_host_history("192.168.1.1")

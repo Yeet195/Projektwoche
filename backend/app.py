@@ -47,190 +47,207 @@ class WebsocketNetworkScan(NetworkScan):
     def __init__(self):
         super().__init__()
 
-    def combined_scan_web(self, app, network_range=None, notes=None, is_auto_scan=False):
-        """
-        Scan method for real-time updates via WebSocket
-        """
-        from flask import current_app
-        import ipaddress
-        import subprocess
-        import platform
-        from concurrent.futures import ThreadPoolExecutor, as_completed
-        from socket import socket, AF_INET, SOCK_STREAM
+    # In the WebsocketNetworkScan class, modify the combined_scan_web method:
 
-        with app.app_context():
+def combined_scan_web(self, app, network_range=None, notes=None, is_auto_scan=False):
+    """
+    Scan method for real-time updates via WebSocket
+    Now includes hostname resolution
+    """
+    from flask import current_app
+    import ipaddress
+    import subprocess
+    import platform
+    from concurrent.futures import ThreadPoolExecutor, as_completed
+    from socket import socket, AF_INET, SOCK_STREAM, gethostbyaddr, herror, gaierror, timeout
 
-            results = {}
-            start_time = time.time()
+    def get_hostname_from_ip(ip: str) -> str:
+        """Resolve IP address to hostname"""
+        try:
+            hostname, _, _ = gethostbyaddr(ip)
+            return hostname
+        except (herror, gaierror, timeout):
+            return "Unknown"
+        except Exception:
+            return "Unknown"
 
-            try:
-                # Start scan
-                scan_type = 'auto' if is_auto_scan else 'manual'
-                socketio.emit('scan_started', {
-                    'status': f'Starting {scan_type} network scan',
-                    'scan_type': scan_type
-                })
+		with app.app_context():
+			results = {}
+			start_time = time.time()
 
-                if network_range is None or network_range == 'auto':
-                    current_ip = self.get_current_ip()
-                    subnet = self.get_subnet()
+			try:
+				# Start scan
+				scan_type = 'auto' if is_auto_scan else 'manual'
+				socketio.emit('scan_started', {
+					'status': f'Starting {scan_type} network scan',
+					'scan_type': scan_type
+				})
 
-                    if isinstance(current_ip, Exception) or isinstance(subnet, Exception):
-                        raise Exception("Could not determine network configuration")
-                    network_range = f"{current_ip}/{subnet}"
+				if network_range is None or network_range == 'auto':
+					current_ip = self.get_current_ip()
+					subnet = self.get_subnet()
 
-                network = ipaddress.IPv4Network(network_range, strict=False)
-                host_ips = [str(ip) for ip in network.hosts()]
+					if isinstance(current_ip, Exception) or isinstance(subnet, Exception):
+						raise Exception("Could not determine network configuration")
+					network_range = f"{current_ip}/{subnet}"
 
-                total_hosts = len(host_ips)
-                socketio.emit('scan_progress', {
-                    'phase': 'ping_sweep',
-                    'message': f'Starting ping sweep of {total_hosts} hosts',
-                    'progress': 0,
-                    'total': total_hosts,
-                    'scan_type': scan_type
-                })
+				network = ipaddress.IPv4Network(network_range, strict=False)
+				host_ips = [str(ip) for ip in network.hosts()]
 
-                # Ping sweep
-                online_hosts = []
-                completed = 0
+				total_hosts = len(host_ips)
+				socketio.emit('scan_progress', {
+					'phase': 'ping_sweep',
+					'message': f'Starting ping sweep of {total_hosts} hosts',
+					'progress': 0,
+					'total': total_hosts,
+					'scan_type': scan_type
+				})
 
-                def ping_host(ip_str):
-                    nonlocal completed
-                    try:
-                        if platform.system().lower() == 'windows':
-                            cmd = ['ping', '-n', '1', '-w', '2000', ip_str]
-                        else:
-                            cmd = ['ping', '-c', '1', '-W', '2', ip_str]
+				# Ping sweep
+				online_hosts = []
+				completed = 0
 
-                        result = subprocess.run(
-                            cmd,
-                            capture_output=True,
-                            text=True,
-                            timeout=3,
-                            encoding='utf-8',
-                            errors='ignore'
-                        )
-                        is_online = result.returncode == 0
+				def ping_host(ip_str):
+					nonlocal completed
+					try:
+						if platform.system().lower() == 'windows':
+							cmd = ['ping', '-n', '1', '-w', '2000', ip_str]
+						else:
+							cmd = ['ping', '-c', '1', '-W', '2', ip_str]
 
-                        completed += 1
-                        progress = (completed / total_hosts) * 50  # First half of progress
+						result = subprocess.run(
+							cmd,
+							capture_output=True,
+							text=True,
+							timeout=3,
+							encoding='utf-8',
+							errors='ignore'
+						)
+						is_online = result.returncode == 0
 
-                        socketio.emit('scan_progress', {
-                            'phase': 'ping_sweep',
-                            'message': f'Ping sweep: {completed}/{total_hosts}',
-                            'progress': progress,
-                            'total': total_hosts,
-                            'current_ip': ip_str,
-                            'status': 'online' if is_online else 'offline',
-                            'scan_type': scan_type
-                        })
+						completed += 1
+						progress = (completed / total_hosts) * 40  # First 40% of progress
 
-                        return ip_str, is_online
-                    except Exception as e:
-                        completed += 1
-                        print(f"Error pinging {ip_str}: {e}")
-                        return ip_str, False
+						socketio.emit('scan_progress', {
+							'phase': 'ping_sweep',
+							'message': f'Ping sweep: {completed}/{total_hosts}',
+							'progress': progress,
+							'total': total_hosts,
+							'current_ip': ip_str,
+							'status': 'online' if is_online else 'offline',
+							'scan_type': scan_type
+						})
 
-                with ThreadPoolExecutor(max_workers=self.threads) as executor:
-                    futures = [executor.submit(ping_host, ip) for ip in host_ips]
+						return ip_str, is_online
+					except Exception as e:
+						completed += 1
+						print(f"Error pinging {ip_str}: {e}")
+						return ip_str, False
 
-                    for future in as_completed(futures):
-                        try:
-                            ip, is_online = future.result()
-                            if is_online:
-                                online_hosts.append(ip)
-                                results[ip] = {'status': 'online', 'ports': []}
-                            else:
-                                results[ip] = {'status': 'offline', 'ports': []}
-                        except Exception:
-                            continue
+				with ThreadPoolExecutor(max_workers=self.threads) as executor:
+					futures = [executor.submit(ping_host, ip) for ip in host_ips]
 
-                # Port scanning
-                if online_hosts:
-                    socketio.emit('scan_progress', {
-                        'phase': 'port_scan',
-                        'message': f'Starting port scan of {len(online_hosts)} online hosts',
-                        'progress': 50,
-                        'total': len(online_hosts),
-                        'online_hosts': len(online_hosts),
-                        'scan_type': scan_type
-                    })
+					for future in as_completed(futures):
+						try:
+							ip, is_online = future.result()
+							if is_online:
+								online_hosts.append(ip)
+								results[ip] = {'status': 'online', 'ports': [], 'hostname': 'Unknown'}
+							else:
+								results[ip] = {'status': 'offline', 'ports': [], 'hostname': 'Unknown'}
+						except Exception:
+							continue
 
-                    completed_ports = 0
+				# Port scanning and hostname resolution
+				if online_hosts:
+					socketio.emit('scan_progress', {
+						'phase': 'port_scan',
+						'message': f'Starting port scan and hostname resolution of {len(online_hosts)} online hosts',
+						'progress': 40,
+						'total': len(online_hosts),
+						'online_hosts': len(online_hosts),
+						'scan_type': scan_type
+					})
 
-                    def scan_ports(ip):
-                        nonlocal completed_ports
-                        open_ports = []
-                        for port in self.ports:
-                            try:
-                                s = socket(AF_INET, SOCK_STREAM)
-                                s.settimeout(0.3)
-                                connection = s.connect_ex((ip, port))
-                                if connection == 0:
-                                    open_ports.append(port)
-                                s.close()
-                            except Exception:
-                                continue
-                            time.sleep(0.01)
+					completed_ports = 0
 
-                        completed_ports += 1
-                        progress = 50 + (completed_ports / len(online_hosts)) * 50  # Second half
+					def scan_ports_and_hostname(ip):
+						nonlocal completed_ports
+						open_ports = []
+						for port in self.ports:
+							try:
+								s = socket(AF_INET, SOCK_STREAM)
+								s.settimeout(0.3)
+								connection = s.connect_ex((ip, port))
+								if connection == 0:
+									open_ports.append(port)
+								s.close()
+							except Exception:
+								continue
+							time.sleep(0.01)
 
-                        socketio.emit('scan_progress', {
-                            'phase': 'port_scan',
-                            'message': f'Port scan: {completed_ports}/{len(online_hosts)}',
-                            'progress': progress,
-                            'total': len(online_hosts),
-                            'current_ip': ip,
-                            'open_ports': open_ports,
-                            'scan_type': scan_type
-                        })
+						# Get hostname
+						hostname = get_hostname_from_ip(ip)
 
-                        return ip, open_ports
+						completed_ports += 1
+						progress = 40 + (completed_ports / len(online_hosts)) * 60  # Last 60%
 
-                    with ThreadPoolExecutor(max_workers=self.threads) as executor:
-                        futures = [executor.submit(scan_ports, ip) for ip in online_hosts]
+						socketio.emit('scan_progress', {
+							'phase': 'port_scan',
+							'message': f'Port scan: {completed_ports}/{len(online_hosts)}',
+							'progress': progress,
+							'total': len(online_hosts),
+							'current_ip': ip,
+							'hostname': hostname,
+							'open_ports': open_ports,
+							'scan_type': scan_type
+						})
 
-                        for future in as_completed(futures):
-                            try:
-                                ip, open_ports = future.result()
-                                results[ip]['ports'] = open_ports
-                            except Exception as e:
-                                print(f'Error scanning IP {ip}: {e}')
+						return ip, open_ports, hostname
 
-                elapsed_time = time.time() - start_time
+					with ThreadPoolExecutor(max_workers=self.threads) as executor:
+						futures = [executor.submit(scan_ports_and_hostname, ip) for ip in online_hosts]
 
-                # Save results to database
-                scan_id = self.db.save_scan_results(
-                    results=results,
-                    network_range=network_range,
-                    scan_duration=elapsed_time,
-                    notes=notes
-                )
+						for future in as_completed(futures):
+							try:
+								ip, open_ports, hostname = future.result()
+								results[ip]['ports'] = open_ports
+								results[ip]['hostname'] = hostname
+							except Exception as e:
+								print(f'Error scanning IP {ip}: {e}')
 
-                # Emit completion
-                socketio.emit('scan_complete', {
-                    'scan_id': scan_id,
-                    'results': results,
-                    'duration': elapsed_time,
-                    'network_range': network_range,
-                    'scan_type': scan_type,
-                    'summary': {
-                        'total_hosts': len(host_ips),
-                        'online_hosts': len(online_hosts),
-                        'hosts_with_ports': sum(1 for host in results.values() if len(host["ports"]) > 0)
-                    }
-                })
+				elapsed_time = time.time() - start_time
 
-                return results
+				# Save results to database
+				scan_id = self.db.save_scan_results(
+					results=results,
+					network_range=network_range,
+					scan_duration=elapsed_time,
+					notes=notes
+				)
 
-            except Exception as e:
-                socketio.emit('scan_error', {
-                    'error': str(e),
-                    'scan_type': scan_type
-                })
-                return results
+				# Emit completion
+				socketio.emit('scan_complete', {
+					'scan_id': scan_id,
+					'results': results,
+					'duration': elapsed_time,
+					'network_range': network_range,
+					'scan_type': scan_type,
+					'summary': {
+						'total_hosts': len(host_ips),
+						'online_hosts': len(online_hosts),
+						'hosts_with_ports': sum(1 for host in results.values() if len(host["ports"]) > 0)
+					}
+				})
+
+				return results
+
+			except Exception as e:
+				socketio.emit('scan_error', {
+					'error': str(e),
+					'scan_type': scan_type
+				})
+				return results
 
 scanner = WebsocketNetworkScan()
 
