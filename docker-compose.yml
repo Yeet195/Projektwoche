@@ -20,7 +20,8 @@ services:
   nginx:
     image: nginx:alpine
     container_name: nginx-proxy
-    network_mode: "host"
+    ports:
+      - "80:80"
     volumes:
       - ./nginx/default.conf:/etc/nginx/nginx.conf:ro
     depends_on:
