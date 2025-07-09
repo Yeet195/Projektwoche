@@ -47,29 +47,27 @@ class WebsocketNetworkScan(NetworkScan):
 	def __init__(self):
 		super().__init__()
 
-	# In the WebsocketNetworkScan class, modify the combined_scan_web method:
+	def combined_scan_web(self, app, network_range=None, notes=None, is_auto_scan=False):
+		"""
+		Scan method for real-time updates via WebSocket
+		Now includes hostname resolution
+		"""
+		from flask import current_app
+		import ipaddress
+		import subprocess
+		import platform
+		from concurrent.futures import ThreadPoolExecutor, as_completed
+		from socket import socket, AF_INET, SOCK_STREAM, gethostbyaddr, herror, gaierror, timeout
 
-def combined_scan_web(self, app, network_range=None, notes=None, is_auto_scan=False):
-	"""
-	Scan method for real-time updates via WebSocket
-	Now includes hostname resolution
-	"""
-	from flask import current_app
-	import ipaddress
-	import subprocess
-	import platform
-	from concurrent.futures import ThreadPoolExecutor, as_completed
-	from socket import socket, AF_INET, SOCK_STREAM, gethostbyaddr, herror, gaierror, timeout
-
-	def get_hostname_from_ip(ip: str) -> str:
-		"""Resolve IP address to hostname"""
-		try:
-			hostname, _, _ = gethostbyaddr(ip)
-			return hostname
-		except (herror, gaierror, timeout):
-			return "Unknown"
-		except Exception:
-			return "Unknown"
+		def get_hostname_from_ip(ip: str) -> str:
+			"""Resolve IP address to hostname"""
+			try:
+				hostname, _, _ = gethostbyaddr(ip)
+				return hostname
+			except (herror, gaierror, timeout):
+				return "Unknown"
+			except Exception:
+				return "Unknown"
 
 		with app.app_context():
 			results = {}
