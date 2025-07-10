@@ -9,6 +9,8 @@ RUN apt-get update && apt-get install -y \
     iproute2 \
     && rm -rf /var/lib/apt/lists/*
 
+ENV DOCKER_CONTAINER=true
+
 # Copy requirements first for better Docker layer caching
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
