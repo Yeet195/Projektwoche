@@ -32,7 +32,7 @@ install_docker() {
 		sudo tee /etc/apt/sources.list.d/docker.list > /dev/null
 	sudo apt-get update
 
-	sudo apt-get install docker-ce docker-ce-cli containerd.io docker-buildx-plugin docker-compose-plugin
+	sudo apt-get install docker-ce docker-ce-cli containerd.io docker-buildx-plugin docker-compose-plugin -y
     
     echo "Docker installation completed!"
     echo "Note: You may need to log out and log back in for group changes to take effect."
@@ -48,6 +48,7 @@ if ! check_docker; then
     if ! check_docker; then
         echo "Docker installation failed or Docker daemon is not running."
         echo "Please check the installation manually or start the Docker service."
+		echo "Installation instructions can be found at: https://docs.docker.com/engine/install/ubuntu/"
         exit 1
     fi
 fi
