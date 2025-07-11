@@ -13,6 +13,19 @@ from main import NetworkScan
 from parser import Parser
 from version_checker import check_startup_version
 
+startup_art=r"""
+	  ___                                      ___           ___     
+	 /  /\          ___            ___        /  /\         /  /\    
+	/  /::\        /  /\          /__/\      /  /::\       /  /::|   
+   /__/:/\:\      /  /::\         \__\:\    /  /:/\:\     /  /:|:|   
+  _\_ \:\ \:\    /  /:/\:\        /  /::\  /  /:/  \:\   /  /:/|:|__ 
+ /__/\ \:\ \:\  /  /::\ \:\    __/  /:/\/ /__/:/ \__\:\ /__/:/ |:| /\
+ \  \:\ \:\_\/ /__/:/\:\_\:\  /__/\/:/~~  \  \:\ /  /:/ \__\/  |:|/:/
+  \  \:\_\:\   \__\/  \:\/:/  \  \::/      \  \:\  /:/      |  |:/:/ 
+   \  \:\/:/        \  \::/    \  \:\       \  \:\/:/       |__|::/  
+	\  \::/          \__\/      \__\/        \  \::/        /__/:/   
+	 \__\/                                    \__\/         \__\/    """
+
 config = Parser()
 app = Flask(__name__)
 app.config['SECRET_KEY'] = config.return_var("frontend", "secret_key")
@@ -398,46 +411,44 @@ def socket_io_js():
 
 @app.route('/version')
 def version_status():
-    try:
-        from version_checker import GitVersionChecker
-        checker = GitVersionChecker()
-        status = checker.check_version_status()
-        return {
-            'config_version': status['config_version'],
-            'current_commit': status['current_commit'][:12] if status['current_commit'] else None,
-            'remote_commit': status['remote_commit'][:12] if status['remote_commit'] else None,
-            'is_up_to_date': status['is_up_to_date'],
-            'status_message': status['status_message'],
-            'is_git_repo': status['is_git_repo']
-        }
-    except Exception as e:
-        return {'error': str(e)}, 500
+	try:
+		from version_checker import GitVersionChecker
+		checker = GitVersionChecker()
+		status = checker.check_version_status()
+		return {
+			'config_version': status['config_version'],
+			'current_commit': status['current_commit'][:12] if status['current_commit'] else None,
+			'remote_commit': status['remote_commit'][:12] if status['remote_commit'] else None,
+			'is_up_to_date': status['is_up_to_date'],
+			'status_message': status['status_message'],
+			'is_git_repo': status['is_git_repo']
+		}
+	except Exception as e:
+		return {'error': str(e)}, 500
 
 if __name__ == "__main__":
-    print("Starting Flask-SocketIO server...")
+	print("Starting Flask-SocketIO server...")
 
-    # Check version status on startup
-    check_startup_version()
+	# Check version status on startup
+	check_startup_version()
 
-    start_auto_scan()
+	start_auto_scan()
 
-    print("""
-      ___                                      ___           ___     
-     /  /\          ___            ___        /  /\         /  /\    
-    /  /::\        /  /\          /__/\      /  /::\       /  /::|   
-   /__/:/\:\      /  /::\         \__\:\    /  /:/\:\     /  /:|:|   
-  _\_ \:\ \:\    /  /:/\:\        /  /::\  /  /:/  \:\   /  /:/|:|__ 
- /__/\ \:\ \:\  /  /::\ \:\    __/  /:/\/ /__/:/ \__\:\ /__/:/ |:| /\\
- \  \:\ \:\_\/ /__/:/\:\_\:\  /__/\/:/~~  \  \:\ /  /:/ \__\/  |:|/:/
-  \  \:\_\:\   \__\/  \:\/:/  \  \::/      \  \:\  /:/      |  |:/:/ 
-   \  \:\/:/        \  \::/    \  \:\       \  \:\/:/       |__|::/  
-    \  \::/          \__\/      \__\/        \  \::/        /__/:/   
-     \__\/                                    \__\/         \__\/    """)
+	lines = startup_art.strip().split('\n')
+	for char in startup_art:
+		print(char, end='')
+		sys.stdout.flush()
+		if char == '\n':
+			time.sleep(0.01)
+		else:
+			time.sleep(0.001)
 
-    socketio.run(
-        app,
-        debug=True,
-        host='0.0.0.0',
-        port=5050,
-        allow_unsafe_werkzeug=True
-    )
+	print()  # Final newline
+
+	socketio.run(
+		app,
+		debug=True,
+		host='0.0.0.0',
+		port=5050,
+		allow_unsafe_werkzeug=True
+	)
