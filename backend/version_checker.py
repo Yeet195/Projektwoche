@@ -222,7 +222,7 @@ class GitVersionChecker:
 					if behind > 0 and ahead == 0:
 						result['status_message'] = f"Behind by {behind} commit(s)"
 					elif ahead > 0 and behind == 0:
-						result['status_message'] = f"⬆Ahead by {ahead} commit(s)"
+						result['status_message'] = f"Ahead by {ahead} commit(s)"
 					elif ahead > 0 and behind > 0:
 						result['status_message'] = f"Diverged: {ahead} ahead, {behind} behind"
 					else:
