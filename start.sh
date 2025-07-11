@@ -78,6 +78,15 @@ EOF
     
     echo "Systemd service '$SERVICE_NAME' created and enabled."
     echo "Service will automatically start containers on boot and restart on failure."
+	echo ""
+	echo "=== Service Management Commands ==="
+	echo "Check status:    sudo systemctl status $SERVICE_NAME"
+	echo "Stop service:    sudo systemctl stop $SERVICE_NAME"
+	echo "Start service:   sudo systemctl start $SERVICE_NAME"
+	echo "Restart service: sudo systemctl restart $SERVICE_NAME"
+	echo "View logs:       sudo journalctl -u $SERVICE_NAME -f"
+	echo "Disable service: sudo systemctl disable $SERVICE_NAME"
+	echo "Remove service:  sudo systemctl disable $SERVICE_NAME && sudo rm $SERVICE_FILE && sudo systemctl daemon-reload"
 }
 
 # Function to manage systemd service
@@ -92,10 +101,10 @@ manage_service() {
     
     # Check service status
     if systemctl is-active --quiet "$SERVICE_NAME"; then
-        echo "✓ Service '$SERVICE_NAME' is running successfully"
-        echo "✓ Containers will automatically restart on crash/reboot"
+        echo "Service '$SERVICE_NAME' is running successfully"
+        echo "Containers will automatically restart on crash/reboot"
     else
-        echo "✗ Service failed to start. Check status with: sudo systemctl status $SERVICE_NAME"
+        echo "Service failed to start. Check status with: sudo systemctl status $SERVICE_NAME"
         return 1
     fi
 }
@@ -126,13 +135,3 @@ else
     # Run interactively for non-detached mode
     docker compose up
 fi
-
-echo ""
-echo "=== Service Management Commands ==="
-echo "Check status:    sudo systemctl status $SERVICE_NAME"
-echo "Stop service:    sudo systemctl stop $SERVICE_NAME"
-echo "Start service:   sudo systemctl start $SERVICE_NAME"
-echo "Restart service: sudo systemctl restart $SERVICE_NAME"
-echo "View logs:       sudo journalctl -u $SERVICE_NAME -f"
-echo "Disable service: sudo systemctl disable $SERVICE_NAME"
-echo "Remove service:  sudo systemctl disable $SERVICE_NAME && sudo rm $SERVICE_FILE && sudo systemctl daemon-reload"
