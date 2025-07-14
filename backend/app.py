@@ -13,7 +13,7 @@ from main import NetworkScan
 from parser import Parser
 from version_checker import check_startup_version
 
-startup_art=r"""
+startup_screen=r"""
 	  ___                                      ___           ___     
 	 /  /\          ___            ___        /  /\         /  /\    
 	/  /::\        /  /\          /__/\      /  /::\       /  /::|   
@@ -434,16 +434,7 @@ if __name__ == "__main__":
 
 	start_auto_scan()
 
-	lines = startup_art.strip().split('\n')
-	for char in startup_art:
-		print(char, end='')
-		sys.stdout.flush()
-		if char == '\n':
-			time.sleep(0.01)
-		else:
-			time.sleep(0.001)
-
-	print()  # Final newline
+	print(startup_screen)
 
 	socketio.run(
 		app,
