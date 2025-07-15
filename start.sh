@@ -18,32 +18,114 @@ check_docker() {
     return 0
 }
 
+# Improved OS detection
+detect_os() {
+    if [ -f /etc/os-release ]; then
+        . /etc/os-release
+        OS_ID=$ID
+        OS_NAME=$NAME
+        OS_VERSION=$VERSION_ID
+        OS_CODENAME=$VERSION_CODENAME
+    elif type lsb_release >/dev/null 2>&1; then
+        OS_ID=$(lsb_release -si | tr '[:upper:]' '[:lower:]')
+        OS_NAME=$(lsb_release -si)
+        OS_VERSION=$(lsb_release -sr)
+        OS_CODENAME=$(lsb_release -sc)
+    elif [ -f /etc/debian_version ]; then
+        OS_ID="debian"
+        OS_NAME="Debian"
+        OS_VERSION=$(cat /etc/debian_version)
+        # Try to determine codename from version
+        case $OS_VERSION in
+            12*) OS_CODENAME="bookworm" ;;
+            11*) OS_CODENAME="bullseye" ;;
+            10*) OS_CODENAME="buster" ;;
+            *) OS_CODENAME="stable" ;;
+        esac
+    else
+        echo "Unable to detect OS. This script supports Ubuntu and Debian only."
+        exit 1
+    fi
+    
+    echo "Detected OS: $OS_NAME ($OS_ID) $OS_VERSION"
+}
+
 # Function to install Docker
 install_docker() {
     echo "Docker not found or not running. Installing Docker..."
-
-    sudo apt-get remove docker docker-engine docker.io containerd runc -y
+    
+    # Detect OS first
+    detect_os
+    
+    # Check if OS is supported
+    case $OS_ID in
+        ubuntu|debian)
+            echo "Installing Docker for $OS_NAME..."
+            ;;
+        *)
+            echo "Unsupported OS: $OS_NAME. This script supports Ubuntu and Debian only."
+            exit 1
+            ;;
+    esac
+    
+    # Remove old Docker packages
+    sudo apt-get remove docker docker-engine docker.io containerd runc -y 2>/dev/null || true
+    
+    # Update package index
     sudo apt-get update
-    sudo apt-get install ca-certificates curl
+    
+    # Install prerequisites
+    sudo apt-get install -y ca-certificates curl gnupg lsb-release
+    
+    # Create keyring directory
     sudo install -m 0755 -d /etc/apt/keyrings
-    sudo curl -fsSL https://download.docker.com/linux/debian/gpg -o /etc/apt/keyrings/docker.asc
-    sudo chmod a+r /etc/apt/keyrings/docker.asc
-
+    
+    # Add Docker's official GPG key
+    curl -fsSL "https://download.docker.com/linux/$OS_ID/gpg" | sudo gpg --dearmor -o /etc/apt/keyrings/docker.gpg
+    sudo chmod a+r /etc/apt/keyrings/docker.gpg
+    
+    # Determine the correct codename for the repository
+    if [ -z "$OS_CODENAME" ]; then
+        # Fallback to lsb_release if VERSION_CODENAME is not available
+        if command -v lsb_release >/dev/null 2>&1; then
+            OS_CODENAME=$(lsb_release -cs)
+        else
+            echo "Unable to determine OS codename. Please install lsb-release package."
+            exit 1
+        fi
+    fi
+    
+    # Add Docker repository
     echo \
-        "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/docker.asc] https://download.docker.com/linux/ubuntu \
-        $(. /etc/os-release && echo "${UBUNTU_CODENAME:-$VERSION_CODENAME}") stable" | \
+        "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/docker.gpg] https://download.docker.com/linux/$OS_ID \
+        $OS_CODENAME stable" | \
         sudo tee /etc/apt/sources.list.d/docker.list > /dev/null
+    
+    # Update package index again
     sudo apt-get update
-
-    sudo apt-get install docker-ce docker-ce-cli containerd.io docker-buildx-plugin docker-compose-plugin -y
+    
+    # Install Docker Engine
+    sudo apt-get install -y docker-ce docker-ce-cli containerd.io docker-buildx-plugin docker-compose-plugin
+    
+    # Add current user to docker group
+    sudo usermod -aG docker $USER
+    
+    # Start and enable Docker service
+    sudo systemctl start docker
+    sudo systemctl enable docker
     
     echo "Docker installation completed!"
     echo "Note: You may need to log out and log back in for group changes to take effect."
     echo "Alternatively, you can run: newgrp docker"
-
+    
+    # Test Docker installation
     echo "Testing Docker installation..."
-    docker pull node:22-alpine
-    docker run -it --rm --entrypoint sh node:22-alpine -c "echo 'Docker is working!'"
+    if sudo docker run --rm hello-world > /dev/null 2>&1; then
+        echo "Docker test successful!"
+    else
+        echo "Docker test failed. Please check the installation."
+        exit 1
+    fi
 }
 
 # Function to create systemd service
@@ -87,6 +169,7 @@ manage_service() {
     fi
     
     echo "Starting systemd service..."
+    sudo systemctl enable "$SERVICE_NAME"
     sudo systemctl start "$SERVICE_NAME"
     
     # Check service status
@@ -99,12 +182,13 @@ manage_service() {
     fi
 }
 
+# Main execution
 if ! check_docker; then
     install_docker
     if ! check_docker; then
         echo "Docker installation failed or Docker daemon is not running."
         echo "Please check the installation manually or start the Docker service."
-        echo "Installation instructions can be found at: https://docs.docker.com/engine/install/ubuntu/"
+        echo "You can try: sudo systemctl start docker"
         exit 1
     fi
 fi

@@ -1,7 +1,7 @@
 services:
   backend:
     build: ./backend
-    container_name: python-backend
+    container_name: backend
     network_mode: "host"
     environment:
       - FLASK_ENV=production
@@ -12,7 +12,7 @@ services:
 
   frontend:
     build: ./frontend
-    container_name: vanilla-frontend
+    container_name: frontend
     network_mode: "host"
     environment:
       - DOCKER_CONTAINER=true
