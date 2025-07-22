@@ -50,6 +50,19 @@ function init() {
   }, 1000);
 }
 
+function debugEventListeners() {
+  console.log("=== DOM ELEMENT DEBUG ===");
+  Object.keys(elements).forEach(key => {
+    const element = elements[key];
+    console.log(`${key}:`, element ? "Found" : "NOT FOUND");
+  });
+  
+  console.log("=== SOCKET DEBUG ===");
+  console.log("Socket connected:", socket?.connected);
+  console.log("Is scanning:", isScanning);
+  console.log("Scan results:", Object.keys(scanResults).length, "hosts");
+}
+
 // Event listeners
 function setupEventListeners() {
   if (elements.autoDetect) {
