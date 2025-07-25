@@ -1,5 +1,4 @@
 #!/bin/bash
-# Complete Docker and service uninstall script
 
 SERVICE_NAME="docker-app"
 SERVICE_FILE="/etc/systemd/system/${SERVICE_NAME}.service"
@@ -24,7 +23,6 @@ fi
 
 echo "Starting uninstall process..."
 
-# Stop and remove systemd service
 echo "=== Removing systemd service ==="
 if systemctl is-active --quiet "$SERVICE_NAME"; then
     echo "Stopping service '$SERVICE_NAME'..."
@@ -45,7 +43,6 @@ else
     echo "Service file not found, skipping..."
 fi
 
-# Stop all running containers
 echo "=== Stopping all Docker containers ==="
 if command -v docker &> /dev/null; then
     RUNNING_CONTAINERS=$(docker ps -q)
@@ -57,7 +54,6 @@ if command -v docker &> /dev/null; then
         echo "No running containers found"
     fi
 
-    # Remove all containers
     echo "=== Removing all Docker containers ==="
     ALL_CONTAINERS=$(docker ps -a -q)
     if [ -n "$ALL_CONTAINERS" ]; then
@@ -68,7 +64,6 @@ if command -v docker &> /dev/null; then
         echo "No containers found"
     fi
 
-    # Remove all images
     echo "=== Removing all Docker images ==="
     ALL_IMAGES=$(docker images -q)
     if [ -n "$ALL_IMAGES" ]; then
@@ -79,7 +74,6 @@ if command -v docker &> /dev/null; then
         echo "No images found"
     fi
 
-    # Remove all volumes
     echo "=== Removing all Docker volumes ==="
     ALL_VOLUMES=$(docker volume ls -q)
     if [ -n "$ALL_VOLUMES" ]; then
@@ -90,7 +84,6 @@ if command -v docker &> /dev/null; then
         echo "No volumes found"
     fi
 
-    # Remove all networks (except default ones)
     echo "=== Removing Docker networks ==="
     CUSTOM_NETWORKS=$(docker network ls --filter type=custom -q)
     if [ -n "$CUSTOM_NETWORKS" ]; then
@@ -101,7 +94,6 @@ if command -v docker &> /dev/null; then
         echo "No custom networks found"
     fi
 
-    # Clean up any remaining Docker resources
     echo "=== Cleaning up Docker system ==="
     docker system prune -a -f --volumes
     echo "Docker system cleaned"
@@ -109,7 +101,6 @@ else
     echo "Docker command not found, skipping container/image cleanup..."
 fi
 
-# Stop Docker service
 echo "=== Stopping Docker service ==="
 if systemctl is-active --quiet docker; then
     sudo systemctl stop docker
@@ -121,7 +112,6 @@ if systemctl is-active --quiet docker.socket; then
     echo "Docker socket stopped"
 fi
 
-# Remove Docker packages
 echo "=== Removing Docker packages ==="
 sudo apt-get purge -y docker-ce docker-ce-cli containerd.io docker-buildx-plugin docker-compose-plugin docker-ce-rootless-extras
 sudo apt-get purge -y docker docker-engine docker.io containerd runc
@@ -129,7 +119,6 @@ sudo apt-get autoremove -y
 sudo apt-get autoclean
 echo "Docker packages removed"
 
-# Remove Docker directories and files
 echo "=== Removing Docker directories and files ==="
 sudo rm -rf /var/lib/docker
 sudo rm -rf /var/lib/containerd
@@ -138,14 +127,12 @@ sudo rm -rf /var/run/docker.sock
 sudo rm -rf /usr/local/bin/docker-compose
 sudo rm -rf ~/.docker
 
-# Remove Docker group
 if getent group docker > /dev/null 2>&1; then
     echo "Removing docker group..."
     sudo groupdel docker
     echo "Docker group removed"
 fi
 
-# Remove Docker repository
 echo "=== Removing Docker repository ==="
 sudo rm -f /etc/apt/sources.list.d/docker.list
 sudo rm -f /etc/apt/keyrings/docker.asc
@@ -153,12 +140,10 @@ sudo rm -f /etc/apt/keyrings/docker.gpg
 sudo apt-get update
 echo "Docker repository removed"
 
-# Remove any remaining Docker processes
 echo "=== Cleaning up remaining processes ==="
 sudo pkill -f docker
 sudo pkill -f containerd
 
-# Check for any remaining Docker-related packages
 echo "=== Checking for remaining Docker packages ==="
 REMAINING_PACKAGES=$(dpkg -l | grep -i docker | awk '{print $2}')
 if [ -n "$REMAINING_PACKAGES" ]; then

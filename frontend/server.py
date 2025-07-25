@@ -43,7 +43,6 @@ def main():
     print("=== Frontend Server Starting ===", flush=True)
 
     try:
-        # Change to script directory
         script_dir = os.path.dirname(os.path.abspath(__file__))
         print(f"Script directory: {script_dir}", flush=True)
         os.chdir(script_dir)
@@ -53,7 +52,6 @@ def main():
         for item in os.listdir('.'):
             print(f"  {item}", flush=True)
 
-        # Check if public directory exists
         if not os.path.exists(DIRECTORY):
             print(f"ERROR: Directory '{DIRECTORY}' not found!", flush=True)
             sys.exit(1)

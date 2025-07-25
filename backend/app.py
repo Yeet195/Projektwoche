@@ -51,7 +51,6 @@ class WebsocketNetworkScan(NetworkScan):
 	def combined_scan_web(self, app, network_range=None, notes=None, is_auto_scan=False):
 		"""
 		Scan method for real-time updates via WebSocket
-		Now includes hostname resolution
 		"""
 		from flask import current_app
 		import ipaddress
@@ -75,7 +74,6 @@ class WebsocketNetworkScan(NetworkScan):
 			start_time = time.time()
 
 			try:
-				# Start scan
 				scan_type = 'auto' if is_auto_scan else 'manual'
 				socketio.emit('scan_started', {
 					'status': f'Starting {scan_type} network scan',
@@ -102,7 +100,6 @@ class WebsocketNetworkScan(NetworkScan):
 					'scan_type': scan_type
 				})
 
-				# Ping sweep
 				online_hosts = []
 				completed = 0
 
@@ -125,7 +122,7 @@ class WebsocketNetworkScan(NetworkScan):
 						is_online = result.returncode == 0
 
 						completed += 1
-						progress = (completed / total_hosts) * 40  # First 40% of progress
+						progress = (completed / total_hosts) * 40
 
 						socketio.emit('scan_progress', {
 							'phase': 'ping_sweep',
@@ -157,7 +154,6 @@ class WebsocketNetworkScan(NetworkScan):
 						except Exception:
 							continue
 
-				# Port scanning and hostname resolution
 				if online_hosts:
 					socketio.emit('scan_progress', {
 						'phase': 'port_scan',
@@ -185,11 +181,10 @@ class WebsocketNetworkScan(NetworkScan):
 								continue
 							time.sleep(0.01)
 
-						# Get hostname
 						hostname = get_hostname_from_ip(ip)
 
 						completed_ports += 1
-						progress = 40 + (completed_ports / len(online_hosts)) * 60  # Last 60%
+						progress = 40 + (completed_ports / len(online_hosts)) * 60
 
 						socketio.emit('scan_progress', {
 							'phase': 'port_scan',
@@ -217,7 +212,6 @@ class WebsocketNetworkScan(NetworkScan):
 
 				elapsed_time = time.time() - start_time
 
-				# Save results to database
 				scan_id = self.db.save_scan_results(
 					results=results,
 					network_range=network_range,
@@ -225,7 +219,6 @@ class WebsocketNetworkScan(NetworkScan):
 					notes=notes
 				)
 
-				# Emit completion
 				socketio.emit('scan_complete', {
 					'scan_id': scan_id,
 					'results': results,
@@ -256,15 +249,12 @@ def auto_scan_worker():
 
 	while auto_scan_running:
 		try:
-			# Get configuration
 			interval_minutes = int(config.return_var("auto_scan", "interval_minutes"))
 			network_range = config.return_var("auto_scan", "network_range")
 			notes = config.return_var("auto_scan", "notes")
 
-			# Update next scan time
 			next_auto_scan_time = datetime.now() + timedelta(minutes=interval_minutes)
 
-			# Emit auto scan scheduled notification
 			with app.app_context():
 				socketio.emit('auto_scan_scheduled', {
 					'next_scan_time': next_auto_scan_time.isoformat(),
@@ -273,7 +263,6 @@ def auto_scan_worker():
 
 			print(f"Starting automatic scan at {datetime.now()}")
 
-			# Perform the scan
 			scanner.combined_scan_web(
 				app=app,
 				network_range=network_range if network_range != 'auto' else None,
@@ -283,7 +272,6 @@ def auto_scan_worker():
 
 			print(f"Automatic scan completed. Next scan at {next_auto_scan_time}")
 
-			# Wait for the interval
 			time.sleep(interval_minutes * 60)
 
 		except Exception as e:
@@ -329,7 +317,6 @@ def handle_connect():
 	print('Client connected')
 	emit('connected', {'status': 'Connected to scan server'})
 
-	# Send auto scan status
 	if auto_scan_running and next_auto_scan_time:
 		emit('auto_scan_status', {
 			'enabled': True,
@@ -347,7 +334,6 @@ def handle_start_scan(data):
 	network_range = data.get('network_range', None)
 	notes = data.get('notes', 'Manual WebSocket Scan')
 
-	# Pass the app instance as the first argument
 	socketio.start_background_task(target=scanner.combined_scan_web,
 								   app=app,
 								   network_range=network_range,
@@ -416,23 +402,19 @@ def version_status():
 if __name__ == "__main__":
 	print("Starting Flask-SocketIO server...")
 
-	# Check version status on startup
 	check_startup_version()
 
 	start_auto_scan()
 
 	print(r"""
-	  ___                                      ___           ___     
-	 /  /\          ___            ___        /  /\         /  /\    
-	/  /::\        /  /\          /__/\      /  /::\       /  /::|   
-   /__/:/\:\      /  /::\         \__\:\    /  /:/\:\     /  /:|:|   
-  _\_ \:\ \:\    /  /:/\:\        /  /::\  /  /:/  \:\   /  /:/|:|__ 
- /__/\ \:\ \:\  /  /::\ \:\    __/  /:/\/ /__/:/ \__\:\ /__/:/ |:| /\
- \  \:\ \:\_\/ /__/:/\:\_\:\  /__/\/:/~~  \  \:\ /  /:/ \__\/  |:|/:/
-  \  \:\_\:\   \__\/  \:\/:/  \  \::/      \  \:\  /:/      |  |:/:/ 
-   \  \:\/:/        \  \::/    \  \:\       \  \:\/:/       |__|::/  
-	\  \::/          \__\/      \__\/        \  \::/        /__/:/   
-	 \__\/                                    \__\/         \__\/    """)
+   _____ _____ _____ ____  _   _ 
+  / ____|  __ \_   _/ __ \| \ | |
+ | (___ | |__) || || |  | |  \| |
+  \___ \|  ___/ | || |  | | . ` |
+  ____) | |    _| || |__| | |\  |
+ |_____/|_|   |_____\____/|_| \_|
+                                                     
+    """)
 
 	socketio.run(
 		app,

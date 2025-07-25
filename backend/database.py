@@ -19,7 +19,6 @@ class NetworkScanDB:
         with sqlite3.connect(self.db_path) as conn:
             cursor = conn.cursor()
 
-            # Create scans table to store scan data
             cursor.execute('''
                 CREATE TABLE IF NOT EXISTS scans (
                     id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -32,7 +31,6 @@ class NetworkScanDB:
                 )
             ''')
 
-            # Create scan_results table to store individual host results
             cursor.execute('''
                 CREATE TABLE IF NOT EXISTS scan_results (
                     id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -46,13 +44,11 @@ class NetworkScanDB:
                 )
             ''')
 
-            # Add hostname column to existing scan_results table if it doesn't exist
             cursor.execute("PRAGMA table_info(scan_results)")
             columns = [column[1] for column in cursor.fetchall()]
             if 'hostname' not in columns:
                 cursor.execute('ALTER TABLE scan_results ADD COLUMN hostname TEXT')
 
-            # Create index for faster queries
             cursor.execute('''
                 CREATE INDEX IF NOT EXISTS idx_scan_results_ip 
                 ON scan_results (ip_address)
@@ -79,11 +75,9 @@ class NetworkScanDB:
         with sqlite3.connect(self.db_path) as conn:
             cursor = conn.cursor()
 
-            # Calculate summary statistics
             total_hosts = len(results)
             online_hosts = sum(1 for host in results.values() if host["status"] == "online")
 
-            # Insert scan metadata
             cursor.execute('''
                 INSERT INTO scans (network_range, total_hosts, online_hosts, scan_duration, notes)
                 VALUES (?, ?, ?, ?, ?)
@@ -91,7 +85,6 @@ class NetworkScanDB:
 
             scan_id = cursor.lastrowid
 
-            # Insert individual host results
             for ip, data in results.items():
                 ports_json = json.dumps(data["ports"]) if data["ports"] else "[]"
                 hostname = data.get("hostname", "Unknown")
@@ -134,7 +127,6 @@ class NetworkScanDB:
         with sqlite3.connect(self.db_path) as conn:
             cursor = conn.cursor()
 
-            # Get scan metadata
             cursor.execute('''
                 SELECT scan_date, network_range, total_hosts, online_hosts, 
                        scan_duration, notes
@@ -146,7 +138,6 @@ class NetworkScanDB:
             if not scan_info:
                 return {}
 
-            # Get scan results
             cursor.execute('''
                 SELECT ip_address, hostname, status, open_ports, scan_timestamp
                 FROM scan_results 
@@ -211,7 +202,7 @@ class NetworkScanDB:
             cursor = conn.cursor()
 
             if scan_id is None:
-                # Get latest scan ID
+
                 cursor.execute('SELECT MAX(id) FROM scans')
                 result = cursor.fetchone()
                 if not result or not result[0]:
@@ -264,19 +255,15 @@ class NetworkScanDB:
         with sqlite3.connect(self.db_path) as conn:
             cursor = conn.cursor()
 
-            # Total scans
             cursor.execute('SELECT COUNT(*) FROM scans')
             total_scans = cursor.fetchone()[0]
 
-            # Total unique IPs scanned
             cursor.execute('SELECT COUNT(DISTINCT ip_address) FROM scan_results')
             unique_ips = cursor.fetchone()[0]
 
-            # Most recent scan
             cursor.execute('SELECT MAX(scan_date) FROM scans')
             last_scan = cursor.fetchone()[0]
 
-            # Average online hosts per scan
             cursor.execute('SELECT AVG(online_hosts) FROM scans')
             avg_online = cursor.fetchone()[0] or 0
 

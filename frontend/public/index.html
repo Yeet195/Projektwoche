@@ -23,7 +23,7 @@
       <!-- Error Display -->
       <div id="errorContainer" class="error-container hidden">
         <div class="error-content">
-          <span class="error-icon">⚠️</span>
+          <span class="error-icon"></span>
           <span id="errorMessage"></span>
           <button class="error-close" onclick="clearError()">×</button>
         </div>
@@ -32,7 +32,7 @@
       <!-- Notification Display -->
       <div id="notificationContainer" class="notification-container hidden">
         <div class="notification-content">
-          <span class="notification-icon">✅</span>
+          <span class="notification-icon"></span>
           <span id="notificationMessage"></span>
           <button class="notification-close" onclick="clearNotification()">
             ×
@@ -43,7 +43,7 @@
       <main class="main">
         <!-- Scanner Control Panel -->
         <section class="card">
-          <h2>🚀 Start Network Scan</h2>
+          <h2>Start Network Scan</h2>
           <form id="scanForm" class="scan-form">
             <div class="input-group">
               <label class="checkbox-container">
@@ -80,7 +80,7 @@
 
             <button type="submit" id="scanButton" class="btn btn-primary">
               <span class="btn-content">
-                <span class="btn-icon">🔍</span>
+                <span class="btn-icon"></span>
                 <span class="btn-text">Start Scan</span>
               </span>
             </button>
@@ -89,7 +89,7 @@
 
         <!-- Progress Section -->
         <section id="progressSection" class="card hidden">
-          <h2>📊 Scan Progress</h2>
+          <h2>Scan Progress</h2>
           <div class="progress-container">
             <div class="progress-header">
               <span id="progressPhase">Initializing...</span>
@@ -108,7 +108,7 @@
         <!-- Results Section -->
         <section id="resultsSection" class="card hidden">
           <div class="results-header">
-            <h2>📋 Scan Results</h2>
+            <h2>Scan Results</h2>
             <div id="scanSummary" class="scan-summary"></div>
           </div>
 
@@ -168,10 +168,10 @@
 
         <!-- History Section -->
         <section id="historySection" class="card">
-          <h2>📚 Scan History</h2>
+          <h2>Scan History</h2>
           <div class="history-controls">
             <button id="refreshHistoryBtn" class="btn btn-secondary">
-              🔄 Refresh
+              Refresh
             </button>
           </div>
           <div id="historyContainer" class="history-container">
@@ -181,7 +181,7 @@
 
         <!-- Statistics Section -->
         <section id="statisticsSection" class="card">
-          <h2>📈 Statistics</h2>
+          <h2>Statistics</h2>
           <div id="statisticsContainer" class="statistics-container">
             <p class="loading-text">Loading statistics...</p>
           </div>

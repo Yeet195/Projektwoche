@@ -17,12 +17,11 @@ class GitVersionChecker:
 	
 	def detect_docker_environment(self) -> bool:
 		"""Detect if running in Docker container"""
-		# Check for common Docker indicators
 		docker_indicators = [
 			os.path.exists('/.dockerenv'),
 			os.path.exists('/proc/1/cgroup') and any('docker' in line for line in open('/proc/1/cgroup', 'r').readlines()),
 			os.environ.get('DOCKER_CONTAINER') == 'true',
-			os.path.exists('/app') and os.getcwd().startswith('/app')  # Common Docker working directory
+			os.path.exists('/app') and os.getcwd().startswith('/app')
 		]
 		return any(docker_indicators)
 	
@@ -52,19 +51,16 @@ class GitVersionChecker:
 	def get_remote_commit_local(self, branch: str = None) -> Optional[str]:
 		"""Get latest commit hash from remote (for non-Docker)"""
 		try:
-			# First, try to fetch latest info from remote
 			subprocess.check_output(
 				['git', 'fetch'],
 				cwd=os.path.dirname(self.config_file),
 				timeout=30,
 				stderr=subprocess.DEVNULL
 			)
-			
-			# Get configured branch or use current branch
+
 			if branch is None:
 				branch = self.config.get('version', 'branch', fallback='main')
-			
-			# Get remote commit hash
+
 			result = subprocess.check_output(
 				['git', 'rev-parse', f'origin/{branch}'],
 				cwd=os.path.dirname(self.config_file),
@@ -100,7 +96,6 @@ class GitVersionChecker:
 	def fetch_remote_commit_docker(self) -> Optional[str]:
 		"""
 		For Docker: fetch latest commit from GitHub API
-		This doesn't require git or cloning the repo
 		"""
 		try:
 			import urllib.request
@@ -109,15 +104,13 @@ class GitVersionChecker:
 			repo_url = self.get_config_repo_url()
 			if not repo_url:
 				return None
-			
-			# Extract owner/repo from GitHub URL
+
 			if 'github.com/' in repo_url:
 				parts = repo_url.split('github.com/')[-1].rstrip('.git').split('/')
 				if len(parts) >= 2:
 					owner, repo = parts[0], parts[1]
 					branch = self.get_config_branch()
-					
-					# GitHub API URL for latest commit
+
 					api_url = f"https://api.github.com/repos/{owner}/{repo}/commits/{branch}"
 					
 					req = urllib.request.Request(api_url)
@@ -149,16 +142,14 @@ class GitVersionChecker:
 			'repo_url': self.get_config_repo_url(),
 			'branch': self.get_config_branch()
 		}
-		
-		# Get version from config
+
 		result['config_version'] = self.get_config_version()
 		
 		if self.is_docker:
-			# Docker environment - use config version and try to fetch remote
+
 			result['current_commit'] = result['config_version']
 			result['status_message'] = "Running in Docker container"
-			
-			# Try to fetch latest commit from GitHub API
+
 			result['remote_commit'] = self.fetch_remote_commit_docker()
 			
 			if result['remote_commit']:
@@ -173,9 +164,7 @@ class GitVersionChecker:
 				result['error'] = "Could not fetch remote version"
 			
 		else:
-			# Local environment - use git commands
 			try:
-				# Check if we're in a git repository
 				subprocess.check_output(
 					['git', 'rev-parse', '--git-dir'],
 					cwd=os.path.dirname(self.config_file),
@@ -185,28 +174,24 @@ class GitVersionChecker:
 			except (subprocess.CalledProcessError, FileNotFoundError):
 				result['status_message'] = "Not a git repository or git not available"
 				return result
-			
-			# Get current commit
+
 			result['current_commit'] = self.get_current_commit_local()
 			if not result['current_commit']:
 				result['error'] = "Could not determine current commit"
 				result['status_message'] = "Unable to check git status"
 				return result
-			
-			# Get remote commit
+
 			result['remote_commit'] = self.get_remote_commit_local()
 			if not result['remote_commit']:
 				result['error'] = "Could not fetch remote commit (network issue?)"
 				result['status_message'] = "Unable to check remote version (offline?)"
 				return result
-			
-			# Compare versions
+
 			if result['current_commit'] == result['remote_commit']:
 				result['is_up_to_date'] = True
 				result['status_message'] = "Running on latest commit"
 			else:
 				result['is_up_to_date'] = False
-				# Check if we're ahead or behind
 				try:
 					ahead_behind = subprocess.check_output(
 						['git', 'rev-list', '--count', '--left-right', 
@@ -276,7 +261,3 @@ def check_startup_version():
 	except Exception as e:
 		print(f"Version check failed: {e}")
 		return None
-
-if __name__ == "__main__":
-	# For testing
-	check_startup_version()

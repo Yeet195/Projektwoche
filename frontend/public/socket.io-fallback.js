@@ -1,16 +1,1 @@
-// Fallback Socket.IO client - minimal implementation
-console.warn('Using fallback Socket.IO implementation');
-
-function createFallbackSocket() {
-    return {
-        connected: false,
-        on: () => {},
-        emit: () => {},
-        connect: () => {},
-        disconnect: () => {}
-    };
-}
-
-if (typeof io === 'undefined') {
-    window.io = () => createFallbackSocket();
-}
+function createFallbackSocket(){return{connected:!1,on(){},emit(){},connect(){},disconnect(){}}}console.warn("Using fallback Socket.IO implementation"),"undefined"==typeof io&&(window.io=()=>createFallbackSocket());

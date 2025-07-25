@@ -1,5 +1,4 @@
 #!/bin/bash
-# Docker build and run script with installation check and systemd service registration
 
 DETACHED=${1:-false}
 SERVICE_NAME="docker-app"
@@ -18,7 +17,6 @@ check_docker() {
     return 0
 }
 
-# Improved OS detection
 detect_os() {
     if [ -f /etc/os-release ]; then
         . /etc/os-release
@@ -35,7 +33,6 @@ detect_os() {
         OS_ID="debian"
         OS_NAME="Debian"
         OS_VERSION=$(cat /etc/debian_version)
-        # Try to determine codename from version
         case $OS_VERSION in
             12*) OS_CODENAME="bookworm" ;;
             11*) OS_CODENAME="bullseye" ;;
@@ -50,14 +47,11 @@ detect_os() {
     echo "Detected OS: $OS_NAME ($OS_ID) $OS_VERSION"
 }
 
-# Function to install Docker
 install_docker() {
     echo "Docker not found or not running. Installing Docker..."
-    
-    # Detect OS first
+
     detect_os
-    
-    # Check if OS is supported
+
     case $OS_ID in
         ubuntu|debian)
             echo "Installing Docker for $OS_NAME..."
@@ -67,26 +61,19 @@ install_docker() {
             exit 1
             ;;
     esac
-    
-    # Remove old Docker packages
+
     sudo apt-get remove docker docker-engine docker.io containerd runc -y 2>/dev/null || true
-    
-    # Update package index
+
     sudo apt-get update
-    
-    # Install prerequisites
+
     sudo apt-get install -y ca-certificates curl gnupg lsb-release
-    
-    # Create keyring directory
+
     sudo install -m 0755 -d /etc/apt/keyrings
-    
-    # Add Docker's official GPG key
+
     curl -fsSL "https://download.docker.com/linux/$OS_ID/gpg" | sudo gpg --dearmor -o /etc/apt/keyrings/docker.gpg
     sudo chmod a+r /etc/apt/keyrings/docker.gpg
-    
-    # Determine the correct codename for the repository
+
     if [ -z "$OS_CODENAME" ]; then
-        # Fallback to lsb_release if VERSION_CODENAME is not available
         if command -v lsb_release >/dev/null 2>&1; then
             OS_CODENAME=$(lsb_release -cs)
         else
@@ -94,31 +81,25 @@ install_docker() {
             exit 1
         fi
     fi
-    
-    # Add Docker repository
+
     echo \
         "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/docker.gpg] https://download.docker.com/linux/$OS_ID \
         $OS_CODENAME stable" | \
         sudo tee /etc/apt/sources.list.d/docker.list > /dev/null
-    
-    # Update package index again
+
     sudo apt-get update
-    
-    # Install Docker Engine
+
     sudo apt-get install -y docker-ce docker-ce-cli containerd.io docker-buildx-plugin docker-compose-plugin
-    
-    # Add current user to docker group
+
     sudo usermod -aG docker $USER
-    
-    # Start and enable Docker service
+
     sudo systemctl start docker
     sudo systemctl enable docker
     
     echo "Docker installation completed!"
     echo "Note: You may need to log out and log back in for group changes to take effect."
     echo "Alternatively, you can run: newgrp docker"
-    
-    # Test Docker installation
+
     echo "Testing Docker installation..."
     if sudo docker run --rm hello-world > /dev/null 2>&1; then
         echo "Docker test successful!"
@@ -128,7 +109,6 @@ install_docker() {
     fi
 }
 
-# Function to create systemd service
 create_systemd_service() {
     echo "Creating systemd service for automatic container management..."
     
@@ -153,7 +133,6 @@ User=root
 WantedBy=multi-user.target
 EOF
 
-    # Reload systemd and enable the service
     sudo systemctl daemon-reload
     sudo systemctl enable "$SERVICE_NAME"
     
@@ -161,7 +140,6 @@ EOF
     echo "Service will automatically start containers on boot and restart on failure."
 }
 
-# Function to manage systemd service
 manage_service() {
     if systemctl is-active --quiet "$SERVICE_NAME"; then
         echo "Stopping existing service..."
@@ -171,8 +149,7 @@ manage_service() {
     echo "Starting systemd service..."
     sudo systemctl enable "$SERVICE_NAME"
     sudo systemctl start "$SERVICE_NAME"
-    
-    # Check service status
+
     if systemctl is-active --quiet "$SERVICE_NAME"; then
         echo "Service '$SERVICE_NAME' is running successfully"
         echo "Containers will automatically restart on crash/reboot"
@@ -182,7 +159,6 @@ manage_service() {
     fi
 }
 
-# Main execution
 if ! check_docker; then
     install_docker
     if ! check_docker; then
@@ -198,14 +174,11 @@ echo "Docker is available and running."
 echo "Building Docker image..."
 docker compose build --no-cache
 
-# Create systemd service
 create_systemd_service
 
 echo "Starting Docker containers..."
 if [ "$DETACHED" = true ]; then
-    # Use systemd service for detached mode
     manage_service
 else
-    # Run interactively for non-detached mode
     docker compose up
 fi

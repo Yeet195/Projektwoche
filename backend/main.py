@@ -20,7 +20,6 @@ class NetworkScan:
     def get_hostname_from_ip(self, ip: str) -> str:
         """
         Resolve IP address to hostname using socket.gethostbyaddr()
-        Works on both Windows and Linux
         """
         try:
             hostname, _, _ = gethostbyaddr(ip)
@@ -35,7 +34,6 @@ class NetworkScan:
             import socket
             import subprocess
 
-            # socket
             try:
                 with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as s:
                     s.connect(("8.8.8.8", 80))
@@ -44,7 +42,6 @@ class NetworkScan:
             except Exception:
                 pass
 
-            # ip route command
             try:
                 result = subprocess.run(['ip', 'route', 'get', '8.8.8.8'],
                                         capture_output=True, text=True, timeout=5)
@@ -55,7 +52,6 @@ class NetworkScan:
             except Exception:
                 pass
 
-            # hostname -I
             try:
                 result = subprocess.run(['hostname', '-I'],
                                         capture_output=True, text=True, timeout=5)
@@ -66,7 +62,6 @@ class NetworkScan:
             except Exception:
                 pass
 
-            # Method 4: Fallback to a known working IP
             return self.config.return_var('scanner', 'fallback')
 
         except Exception as e:
@@ -86,24 +81,21 @@ class NetworkScan:
                     if address.startswith("255."):
                         return address
 
-                # Fallback
                 return "255.255.255.0"
 
-            else:  # Linux/Unix/macOS
+            else:
                 result = subprocess.run(['ip', 'addr', 'show'], capture_output=True, text=True)
 
                 import re
-                # Find the interface with a route to internet
                 route_result = subprocess.run(['ip', 'route', 'get', '8.8.8.8'], capture_output=True, text=True)
                 interface_match = re.search(r'dev (\w+)', route_result.stdout)
 
                 if interface_match:
                     interface = interface_match.group(1)
-                    # Get CIDR for that interface
                     result = subprocess.run(['ip', 'addr', 'show', interface], capture_output=True, text=True)
                     match = re.search(r'inet (\d+\.\d+\.\d+\.\d+)/(\d+)', result.stdout)
                     if match:
-                        return match.group(2)  # Return CIDR prefix
+                        return match.group(2)
 
                 return "24"
 
@@ -114,8 +106,6 @@ class NetworkScan:
                       save_to_db: bool = True, notes: str = None) -> dict:
         """
         Perform ping sweep first, then port scan only on online hosts
-        Now includes hostname resolution
-        Returns results and optionally saves to database
         """
 
         def ping_single_host(ip_str: str) -> tuple[str, bool]:
@@ -153,17 +143,13 @@ class NetworkScan:
                 except Exception:
                     continue
                 time.sleep(0.01)
-            
-            # Get hostname
             hostname = self.get_hostname_from_ip(ip)
             
             return ip, scanned_ports, hostname
 
-        # Initialize results dictionary
         results = {}
 
         try:
-            # Determine network range
             if network_range is None:
                 current_ip = self.get_current_ip()
                 subnet = self.get_subnet()
@@ -171,14 +157,12 @@ class NetworkScan:
                     raise Exception("Could not determine current network")
                 network_range = f"{current_ip}/{subnet}"
 
-            # Parse network range
             network = ipaddress.IPv4Network(network_range, strict=False)
             host_ips = [str(ip) for ip in network.hosts()]
 
             print(f"Starting scan of {len(host_ips)} hosts in {network_range}...")
             start_time = time.time()
 
-            # Step 1: Ping sweep to find online hosts
             online_hosts = []
             with ThreadPoolExecutor(max_workers=self.threads) as executor:
                 futures = [executor.submit(ping_single_host, ip) for ip in host_ips]
@@ -196,7 +180,6 @@ class NetworkScan:
 
             print(f"Found {len(online_hosts)} online hosts. Starting port scan and hostname resolution...")
 
-            # Step 2: Port scan and hostname resolution for online hosts
             if online_hosts:
                 with ThreadPoolExecutor(max_workers=self.threads) as executor:
                     futures = [executor.submit(scan_ip_ports_and_hostname, ip) for ip in online_hosts]
@@ -212,12 +195,10 @@ class NetworkScan:
             elapsed_time = time.time() - start_time
             print(f"Combined scan finished in: {elapsed_time:.2f}s")
 
-            # Print summary
             online_count = sum(1 for host in results.values() if host["status"] == "online")
             hosts_with_ports = sum(1 for host in results.values() if len(host["ports"]) > 0)
             print(f"Summary: {online_count}/{len(host_ips)} hosts online, {hosts_with_ports} hosts with open ports")
 
-            # Save to database if requested
             if save_to_db:
                 scan_id = self.db.save_scan_results(
                     results=results,
