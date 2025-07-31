@@ -402,7 +402,10 @@ def version_status():
 if __name__ == "__main__":
 	print("Starting Flask-SocketIO server...")
 
-	check_startup_version()
+	status = check_startup_version()
+	if not status['meets_minimum']:
+		print(f"Version check failed: {status['message']}, please update to at least {status['minimum_version']}")
+		sys.exit(1)
 
 	start_auto_scan()
 
