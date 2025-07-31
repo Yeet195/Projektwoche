@@ -156,7 +156,7 @@ class GitVersionChecker:
         except (subprocess.CalledProcessError, subprocess.TimeoutExpired, FileNotFoundError):
             return None
     
-    def fetch_remote_tags_docker(self) -> Tuple[Optional[str], Optional[List[str]]]:
+    def fetch_remote_tags_docker(self):
         """
         For Docker: fetch latest tag and all tags from GitHub API
         Returns: (latest_tag, all_tags_list)
