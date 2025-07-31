@@ -4,7 +4,6 @@ DETACHED=${1:-false}
 SERVICE_NAME="docker-app"
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 SERVICE_FILE="/etc/systemd/system/${SERVICE_NAME}.service"
-MINIMUM_VERSION="v1.0.0"
 
 check_docker() {
     if ! command -v docker &> /dev/null; then
@@ -160,36 +159,6 @@ manage_service() {
     fi
 }
 
-check_version_compatibility() {
-    echo "Checking version compatibility..."
-    
-    if [ -f "$SCRIPT_DIR/backend/version_checker.py" ]; then
-        cd "$SCRIPT_DIR"
-        
-        # Check if current version meets minimum requirements
-        python3 -c "
-import sys
-sys.path.append('backend')
-from version_checker import check_docker_version_compatibility
-
-if check_docker_version_compatibility('$MINIMUM_VERSION'):
-    print('Version compatibility check passed')
-    sys.exit(0)
-else:
-    print('Version compatibility check failed')
-    print('Current version does not meet minimum requirement: $MINIMUM_VERSION')
-    print('Please update to a newer version')
-    sys.exit(1)
-" 2>/dev/null || {
-            echo "⚠ Could not verify version compatibility (proceeding anyway)"
-            return 0
-        }
-    else
-        echo "⚠ Version checker not found (proceeding anyway)"
-        return 0
-    fi
-}
-
 if ! check_docker; then
     install_docker
     if ! check_docker; then
@@ -202,13 +171,7 @@ fi
 
 echo "Docker is available and running."
 
-echo "Performing version compatibility check..."
-check_version_compatibility
-
 echo "Building Docker image..."
-CURRENT_VERSION=$(git describe --tags --always 2>/dev/null || echo "unknown")
-echo "Current version: $CURRENT_VERSION"
-
 docker compose build --no-cache
 
 create_systemd_service
