@@ -15,7 +15,6 @@ class NetworkScanDB:
         self.init_database()
 
     def init_database(self):
-        """Initialize the database with required tables"""
         with sqlite3.connect(self.db_path) as conn:
             cursor = conn.cursor()
 
@@ -63,15 +62,6 @@ class NetworkScanDB:
 
     def save_scan_results(self, results: Dict, network_range: str = None,
                           scan_duration: float = 0, notes: str = None) -> int:
-        """
-        Save scan results to database
-
-        :param results: Dictionary with IP results {ip: {"status": "online/offline", "ports": [...], "hostname": "..."}}
-        :param network_range: Network range that was scanned
-        :param scan_duration: Time taken for the scan
-        :param notes: Optional notes about the scan
-        :return: scan_id of the saved scan
-        """
         with sqlite3.connect(self.db_path) as conn:
             cursor = conn.cursor()
 
@@ -97,7 +87,6 @@ class NetworkScanDB:
             return scan_id
 
     def get_scan_history(self, limit: int = 10) -> List[Dict]:
-        """Get recent scan history"""
         with sqlite3.connect(self.db_path) as conn:
             cursor = conn.cursor()
             cursor.execute('''
@@ -123,7 +112,6 @@ class NetworkScanDB:
             return scans
 
     def get_scan_results(self, scan_id: int) -> Dict:
-        """Get detailed results for a specific scan"""
         with sqlite3.connect(self.db_path) as conn:
             cursor = conn.cursor()
 
@@ -169,7 +157,6 @@ class NetworkScanDB:
             }
 
     def get_host_history(self, ip_address: str, limit: int = 10) -> List[Dict]:
-        """Get scan history for a specific IP address"""
         with sqlite3.connect(self.db_path) as conn:
             cursor = conn.cursor()
             cursor.execute('''
@@ -197,7 +184,6 @@ class NetworkScanDB:
             return history
 
     def get_online_hosts(self, scan_id: Optional[int] = None) -> List[Dict]:
-        """Get all online hosts from latest scan or specific scan"""
         with sqlite3.connect(self.db_path) as conn:
             cursor = conn.cursor()
 
@@ -230,7 +216,6 @@ class NetworkScanDB:
             return hosts
 
     def delete_old_scans(self, days_to_keep: int = 30):
-        """Delete scans older than specified days"""
         with sqlite3.connect(self.db_path) as conn:
             cursor = conn.cursor()
             cursor.execute('''
@@ -251,7 +236,6 @@ class NetworkScanDB:
             return deleted_count
 
     def get_statistics(self) -> Dict:
-        """Get database statistics"""
         with sqlite3.connect(self.db_path) as conn:
             cursor = conn.cursor()
 

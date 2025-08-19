@@ -18,9 +18,6 @@ class NetworkScan:
         self.db = NetworkScanDB()
 
     def get_hostname_from_ip(self, ip: str) -> str:
-        """
-        Resolve IP address to hostname using socket.gethostbyaddr()
-        """
         try:
             hostname, _, _ = gethostbyaddr(ip)
             return hostname
@@ -68,7 +65,6 @@ class NetworkScan:
             return e
 
     def get_subnet(self) -> str | Exception:
-        """Get Subnet mask"""
         try:
             if platform.system() == "Windows":
                 result = subprocess.run(["ipconfig"], capture_output=True, text=True)
@@ -104,10 +100,6 @@ class NetworkScan:
 
     def combined_scan(self, network_range: str = None, ping_timeout: int = 2,
                       save_to_db: bool = True, notes: str = None) -> dict:
-        """
-        Perform ping sweep first, then port scan only on online hosts
-        """
-
         def ping_single_host(ip_str: str) -> tuple[str, bool]:
             """Internal function to ping a single host"""
             try:
@@ -130,7 +122,6 @@ class NetworkScan:
                 return ip_str, False
 
         def scan_ip_ports_and_hostname(ip: str) -> tuple[str, list[int], str]:
-            """Scan all ports for an IP address and get hostname"""
             scanned_ports = []
             for port in self.ports:
                 try:
@@ -230,7 +221,6 @@ class NetworkScan:
             print("-" * 80)
 
     def show_host_history(self, ip_address: str):
-        """Display scan history for a specific IP"""
         history = self.db.get_host_history(ip_address)
         if not history:
             print(f"No history found for IP {ip_address}")

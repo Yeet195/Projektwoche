@@ -17,7 +17,6 @@ class GitVersionChecker:
         self.is_docker = self.detect_docker_environment()
     
     def detect_docker_environment(self) -> bool:
-        """Detect if running in Docker container"""
         docker_indicators = [
             os.path.exists('/.dockerenv'),
             os.path.exists('/proc/1/cgroup') and any('docker' in line for line in open('/proc/1/cgroup', 'r').readlines()),
@@ -27,7 +26,6 @@ class GitVersionChecker:
         return any(docker_indicators)
     
     def load_config(self) -> configparser.ConfigParser:
-        """Load configuration from config.ini"""
         config = configparser.ConfigParser()
         if os.path.exists(self.config_file):
             config.read(self.config_file)
@@ -36,21 +34,14 @@ class GitVersionChecker:
         return config
     
     def normalize_version(self, version_str: str) -> str:
-        """
-        Normalize version string to semantic version format
-        Handles various git tag formats like v1.2.3, 1.2.3, etc.
-        """
         if not version_str:
             return "0.0.0"
-        
-        # Remove 'v' prefix if present
+
         clean_version = version_str.lstrip('v')
-        
-        # If it looks like a commit hash (40 chars, hex), convert to 0.0.0+hash
+
         if re.match(r'^[a-f0-9]{40}$', clean_version):
             return f"0.0.0+{clean_version[:12]}"
-        
-        # Try to extract semantic version from string
+
         semver_pattern = r'(\d+)\.(\d+)\.(\d+)(?:-([a-zA-Z0-9\-\.]+))?(?:\+([a-zA-Z0-9\-\.]+))?'
         match = re.match(semver_pattern, clean_version)
         
@@ -62,22 +53,19 @@ class GitVersionChecker:
             if build:
                 result += f"+{build}"
             return result
-        
-        # Try to extract major.minor format and add .0
+
         simple_pattern = r'(\d+)\.(\d+)$'
         match = re.match(simple_pattern, clean_version)
         if match:
             major, minor = match.groups()
             return f"{major}.{minor}.0"
-        
-        # Try to extract just major and add .0.0
+
         major_pattern = r'(\d+)$'
         match = re.match(major_pattern, clean_version)
         if match:
             major = match.group(1)
             return f"{major}.0.0"
-        
-        # If nothing matches, treat as development version
+
         return f"0.0.0+{clean_version}"
     
     def compare_versions(self, version1: str, version2: str) -> int:
@@ -102,15 +90,14 @@ class GitVersionChecker:
     def get_latest_tag_local(self) -> Optional[str]:
         """Get latest git tag from local repository"""
         try:
-            # Fetch tags first
+
             subprocess.check_output(
                 ['git', 'fetch', '--tags'],
                 cwd=os.path.dirname(self.config_file),
                 timeout=30,
                 stderr=subprocess.DEVNULL
             )
-            
-            # Get latest tag by version (semantic sorting)
+
             result = subprocess.check_output(
                 ['git', 'tag', '-l', '--sort=-version:refname'],
                 cwd=os.path.dirname(self.config_file),
@@ -120,7 +107,6 @@ class GitVersionChecker:
             ).strip()
             
             if result:
-                # Return the first (latest) tag
                 tags = result.split('\n')
                 return tags[0] if tags[0] else None
             return None
@@ -129,7 +115,6 @@ class GitVersionChecker:
             return None
     
     def get_current_tag_local(self) -> Optional[str]:
-        """Get current git tag if HEAD is on a tagged commit"""
         try:
             result = subprocess.check_output(
                 ['git', 'describe', '--exact-match', '--tags', 'HEAD'],
@@ -143,7 +128,6 @@ class GitVersionChecker:
             return None
     
     def get_current_commit_local(self) -> Optional[str]:
-        """Get current commit hash from local git"""
         try:
             result = subprocess.check_output(
                 ['git', 'rev-parse', 'HEAD'],
@@ -157,10 +141,6 @@ class GitVersionChecker:
             return None
     
     def fetch_remote_tags_docker(self):
-        """
-        For Docker: fetch latest tag and all tags from GitHub API
-        Returns: (latest_tag, all_tags_list)
-        """
         try:
             import urllib.request
             import json
@@ -172,8 +152,7 @@ class GitVersionChecker:
             parts = repo_url.split('github.com/')[-1].rstrip('.git').split('/')
             if len(parts) >= 2:
                 owner, repo = parts[0], parts[1]
-                
-                # Get all tags
+
                 api_url = f"https://api.github.com/repos/{owner}/{repo}/tags"
                 
                 req = urllib.request.Request(api_url)
@@ -184,11 +163,9 @@ class GitVersionChecker:
                     
                     if not data:
                         return None, None
-                    
-                    # Extract tag names
+
                     tag_names = [tag['name'] for tag in data]
-                    
-                    # Sort tags by semantic version
+
                     try:
                         sorted_tags = sorted(tag_names, 
                                            key=lambda x: version.parse(self.normalize_version(x)), 
@@ -196,7 +173,6 @@ class GitVersionChecker:
                         latest_tag = sorted_tags[0] if sorted_tags else None
                         return latest_tag, tag_names
                     except Exception:
-                        # Fallback to first tag if sorting fails
                         return tag_names[0], tag_names
             
             return None, None
@@ -234,9 +210,6 @@ class GitVersionChecker:
             return 'main'
     
     def check_version_status(self) -> Dict[str, any]:
-        """
-        Check version status using git tags with semantic versioning
-        """
         result = {
             'is_docker': self.is_docker,
             'is_git_repo': False,
@@ -258,17 +231,14 @@ class GitVersionChecker:
         result['minimum_version'] = self.get_config_minimum_version()
         
         if self.is_docker:
-            # Docker environment
             result['current_version'] = result['config_version']
             result['status_message'] = "Running in Docker container"
-            
-            # Fetch remote tags
+
             latest_tag, all_tags = self.fetch_remote_tags_docker()
             result['latest_version'] = latest_tag
             result['available_tags'] = all_tags or []
             
             if latest_tag:
-                # Compare current vs latest
                 comparison = self.compare_versions(result['current_version'], latest_tag)
                 result['version_comparison'] = comparison
                 
@@ -278,8 +248,7 @@ class GitVersionChecker:
                 else:
                     result['is_up_to_date'] = False
                     result['status_message'] = f"Docker image is outdated (current: {self.normalize_version(result['current_version'])}, latest: {self.normalize_version(latest_tag)})"
-                
-                # Check minimum version requirement
+
                 if result['minimum_version']:
                     min_comparison = self.compare_versions(result['current_version'], result['minimum_version'])
                     result['meets_minimum'] = min_comparison >= 0
@@ -290,10 +259,9 @@ class GitVersionChecker:
             else:
                 result['status_message'] = "Docker container (unable to check remote versions)"
                 result['error'] = "Could not fetch remote versions"
-                result['meets_minimum'] = True  # Assume OK if can't check
-        
+                result['meets_minimum'] = True
+
         else:
-            # Local development environment
             try:
                 subprocess.check_output(
                     ['git', 'rev-parse', '--git-dir'],
@@ -306,13 +274,11 @@ class GitVersionChecker:
                 result['error'] = "Git not available"
                 return result
 
-            # Try to get current tag first
             current_tag = self.get_current_tag_local()
             if current_tag:
                 result['current_version'] = current_tag
                 result['status_message'] = f"On tagged version {self.normalize_version(current_tag)}"
             else:
-                # Fall back to commit hash
                 current_commit = self.get_current_commit_local()
                 if current_commit:
                     result['current_version'] = current_commit
@@ -322,13 +288,11 @@ class GitVersionChecker:
                     result['status_message'] = "Unable to check git status"
                     return result
 
-            # Get latest tag
             latest_tag = self.get_latest_tag_local()
             result['latest_version'] = latest_tag
             
             if latest_tag:
                 if current_tag:
-                    # Compare tags
                     comparison = self.compare_versions(current_tag, latest_tag)
                     result['version_comparison'] = comparison
                     
@@ -339,11 +303,9 @@ class GitVersionChecker:
                         result['is_up_to_date'] = False
                         result['status_message'] = f"Behind latest version (current: {self.normalize_version(current_tag)}, latest: {self.normalize_version(latest_tag)})"
                 else:
-                    # On commit, not tag
                     result['is_up_to_date'] = False
                     result['status_message'] = f"On untagged commit, latest tag is {self.normalize_version(latest_tag)}"
-                
-                # Check minimum version requirement
+
                 if result['minimum_version']:
                     current_for_min_check = current_tag or current_commit
                     min_comparison = self.compare_versions(current_for_min_check, result['minimum_version'])
@@ -355,12 +317,11 @@ class GitVersionChecker:
             else:
                 result['error'] = "No tags found in repository"
                 result['status_message'] = "No version tags available"
-                result['meets_minimum'] = True  # Assume OK if no tags
+                result['meets_minimum'] = True
         
         return result
     
     def print_version_status(self):
-        """Print a formatted version status message"""
         status = self.check_version_status()
         
         print("=" * 70)
@@ -374,7 +335,7 @@ class GitVersionChecker:
             print(f"Branch: {status['branch']}")
         
         if status['current_version']:
-            if len(status['current_version']) == 40:  # Commit hash
+            if len(status['current_version']) == 40: 
                 print(f"Current Version: {status['current_version'][:12]}... (commit)")
             else:
                 print(f"Current Version: {self.normalize_version(status['current_version'])}")
@@ -391,7 +352,6 @@ class GitVersionChecker:
         
         if status['available_tags'] and len(status['available_tags']) > 0:
             print(f"Available Versions: {len(status['available_tags'])} tags found")
-            # Show last 5 versions
             recent_tags = status['available_tags'][:5]
             for tag in recent_tags:
                 print(f"  - {self.normalize_version(tag)}")
@@ -404,9 +364,6 @@ class GitVersionChecker:
         print("=" * 70)
     
     def is_version_compatible(self, required_version: str) -> bool:
-        """
-        Check if current version is compatible with required version
-        """
         status = self.check_version_status()
         
         if not status['current_version']:
@@ -415,16 +372,10 @@ class GitVersionChecker:
         return self.compare_versions(status['current_version'], required_version) >= 0
 
 def check_startup_version():
-    """
-    Convenience function to check version on startup
-    Returns dict with version status info
-    """
     try:
         checker = GitVersionChecker()
         status = checker.check_version_status()
         checker.print_version_status()
-        
-        # Return useful info for startup logic
         return {
             'is_up_to_date': status['is_up_to_date'],
             'meets_minimum': status['meets_minimum'],
@@ -447,10 +398,6 @@ def check_startup_version():
         }
 
 def check_docker_version_compatibility(required_version: str) -> bool:
-    """
-    Standalone function to check if Docker version meets requirements
-    Useful for installation scripts
-    """
     try:
         checker = GitVersionChecker()
         return checker.is_version_compatible(required_version)
@@ -458,5 +405,4 @@ def check_docker_version_compatibility(required_version: str) -> bool:
         return False
 
 if __name__ == "__main__":
-    # Example usage
     check_startup_version()

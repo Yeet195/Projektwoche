@@ -21,14 +21,6 @@ class Parser:
         return config
 
     def return_var(self, section, option):
-        """
-        Returns a value from config.ini
-
-        :param section:
-        :param option:
-        :return:
-            str: every value is returned as a string or list of strings
-        """
         return self.config.get(section, option)
 
     def return_list(self, section, option, annotation):
