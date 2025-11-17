@@ -5,7 +5,7 @@ services:
     ports:
       - "53:53/udp"
     volumes:
-      - ./dnsmasq.conf:/etc/dnsmasq.conf
+      - ./dnsmasq.conf:/etc/dnsmasq.d/custom.conf
     restart: unless-stopped
 
   backend:
