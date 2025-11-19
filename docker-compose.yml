@@ -1,4 +1,13 @@
 services:
+  dns:
+    image: strm/dnsmasq
+    container_name: dnsmasq
+    ports:
+      - "53:53/udp"
+    volumes:
+      - ./dnsmasq.conf:/etc/dnsmasq.d/custom.conf
+    restart: unless-stopped
+
   backend:
     build: ./backend
     container_name: backend
