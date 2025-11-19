@@ -4,8 +4,9 @@ services:
     container_name: dnsmasq
     ports:
       - "53:53/udp"
+      - "53:53/tcp"
     volumes:
-      - ./dnsmasq.conf:/etc/dnsmasq.d/custom.conf
+      - ./dnsmasq.conf:/etc/dnsmasq.conf
     restart: unless-stopped
 
   backend:
