@@ -1,15 +1,331 @@
-let socket=null,isConnected=!1,isScanning=!1,scanResults={},currentFilter="all";const elements={statusIndicator:document.getElementById("statusIndicator"),statusText:document.getElementById("statusText"),autoDetect:document.getElementById("autoDetect"),networkRangeGroup:document.getElementById("networkRangeGroup"),networkRange:document.getElementById("networkRange"),notes:document.getElementById("notes"),scanForm:document.getElementById("scanForm"),scanButton:document.getElementById("scanButton"),progressSection:document.getElementById("progressSection"),progressPhase:document.getElementById("progressPhase"),progressPercent:document.getElementById("progressPercent"),progressFill:document.getElementById("progressFill"),progressMessage:document.getElementById("progressMessage"),progressDetails:document.getElementById("progressDetails"),resultsSection:document.getElementById("resultsSection"),statsGrid:document.getElementById("statsGrid"),totalHosts:document.getElementById("totalHosts"),onlineHosts:document.getElementById("onlineHosts"),hostsWithPorts:document.getElementById("hostsWithPorts"),scanSummary:document.getElementById("scanSummary"),searchInput:document.getElementById("searchInput"),sortSelect:document.getElementById("sortSelect"),resultsBody:document.getElementById("resultsBody"),historyContainer:document.getElementById("historyContainer"),statisticsContainer:document.getElementById("statisticsContainer"),refreshHistoryBtn:document.getElementById("refreshHistoryBtn"),errorContainer:document.getElementById("errorContainer"),errorMessage:document.getElementById("errorMessage"),notificationContainer:document.getElementById("notificationContainer"),notificationMessage:document.getElementById("notificationMessage")};function init(){setupEventListeners(),initializeSocket(),setTimeout(()=>{debugEventListeners()},1e3)}function debugEventListeners(){console.log("=== DOM ELEMENT DEBUG ==="),Object.keys(elements).forEach(e=>{let t=elements[e];console.log(`${e}:`,t?"Found":"NOT FOUND")}),console.log("=== SOCKET DEBUG ==="),console.log("Socket connected:",socket?.connected),console.log("Is scanning:",isScanning),console.log("Scan results:",Object.keys(scanResults).length,"hosts")}function setupEventListeners(){elements.autoDetect&&elements.autoDetect.addEventListener("change",toggleNetworkRangeInput),elements.scanForm?elements.scanForm.addEventListener("submit",handleScanSubmit):console.error("Scan form not found for event listener"),elements.scanButton&&elements.scanButton.addEventListener("click",e=>{"submit"!==e.target.type&&handleScanSubmit(e)}),elements.searchInput&&elements.searchInput.addEventListener("input",filterResults),elements.sortSelect&&elements.sortSelect.addEventListener("change",filterResults),elements.refreshHistoryBtn&&elements.refreshHistoryBtn.addEventListener("click",requestScanHistory),document.querySelectorAll(".filter-btn").forEach(e=>{e.addEventListener("click",e=>{document.querySelectorAll(".filter-btn").forEach(e=>e.classList.remove("active")),e.target.classList.add("active"),currentFilter=e.target.dataset.filter,filterResults()})})}function initializeSocket(){try{let e=window.location.hostname,t=window.location.port,n;n="3030"===t?`http://${e}:5050`:`http://${e}:80`,console.log(`Attempting to connect to: ${n}`),(socket=io(n,{transports:["websocket","polling"],timeout:2e4,reconnection:!0,reconnectionAttempts:5,reconnectionDelay:1e3,forceNew:!0})).on("connect",()=>{console.log(`Connected successfully to ${n}`),updateConnectionStatus(!0),clearError()}),socket.on("disconnect",e=>{console.log(`Disconnected: ${e}`),updateConnectionStatus(!1),isScanning=!1,updateScanButton()}),socket.on("connect_error",e=>{console.error("Connection error:",{message:e.message,description:e.description,type:e.type}),updateConnectionStatus(!1),showError(`Connection failed: ${e.message||"Unknown error"}`)}),socket.on("connected",e=>{showNotification(e.status)}),socket.on("scan_started",e=>{isScanning=!0,scanResults={},updateScanButton(),showProgressSection(),hideResultsSection(),updateProgress(0,"initializing",e.status)}),socket.on("scan_progress",e=>{updateProgress(e.progress,e.phase,e.message,e)}),socket.on("scan_complete",e=>{isScanning=!1,scanResults=e.results||{},updateScanButton(),hideProgressSection(),showResultsSection(e),showNotification(`Scan completed! Found ${e.summary?.online_hosts||0} online hosts.`),requestScanHistory(),requestStatistics()}),socket.on("scan_error",e=>{console.error("Scan error:",e),isScanning=!1,updateScanButton(),hideProgressSection(),showError(e.error||"An error occurred during scanning")}),socket.on("scan_history",e=>{displayScanHistory(e||[])}),socket.on("statistics",e=>{displayStatistics(e||{})}),socket.on("auto_scan_status",e=>{updateAutoScanStatus(e)}),socket.on("auto_scan_scheduled",e=>{showNotification(`Automatic scan scheduled for ${new Date(e.next_scan_time).toLocaleTimeString()}`),updateAutoScanStatus({enabled:!0,running:!0,next_scan_time:e.next_scan_time,interval_minutes:e.interval_minutes})}),socket.on("auto_scan_toggled",e=>{e.success&&showNotification(`Automatic scanning ${e.running?"started":"stopped"}`)}),setTimeout(()=>{isConnected&&(requestScanHistory(),requestStatistics())},1e3)}catch(s){console.error("Socket initialization error:",s),showError("Failed to initialize connection to scan server")}}function detectConnectionEnvironment(){let e=window.location.hostname,t=window.location.port,n=window.location.protocol,s,o;return"3030"===t?(s=`${n}//${e}:5050`,o="direct-backend"):"localhost"===e||"127.0.0.1"===e?(s=`${n}//${e}:80`,o="local-nginx"):(s=`${n}//${e}${t&&"80"!==t?":"+t:""}`,o="remote-nginx"),{serverUrl:s,connectionType:o,hostname:e,port:t,isFallback:!1}}function tryFallbackConnection(){let e=window.location.hostname,t=window.location.protocol,n=[`${t}//${e}:5050`,`${t}//${e}:80`,`${t}//localhost:80`,`${t}//127.0.0.1:80`,],s=0;!function e(){if(s>=n.length){showError("All connection attempts failed. Please check server status.");return}let t=n[s];console.log(`Attempting fallback connection ${s+1}: ${t}`),socket&&socket.disconnect(),(socket=io(t,{transports:["websocket","polling"],timeout:1e4,reconnection:!1,forceNew:!0,path:"/socket.io/"})).on("connect",()=>{console.log(`Fallback connection successful: ${t}`),updateConnectionStatus(!0),clearError(),setupSocketEventHandlers()}),socket.on("connect_error",()=>{s++,setTimeout(e,2e3)})}()}function setupSocketEventHandlers(){socket.on("connected",e=>{showNotification(e.status)}),socket.on("scan_started",e=>{isScanning=!0,scanResults={},updateScanButton(),showProgressSection(),hideResultsSection(),updateProgress(0,"initializing",e.status)}),socket.on("scan_progress",e=>{updateProgress(e.progress,e.phase,e.message,e)}),socket.on("scan_complete",e=>{isScanning=!1,scanResults=e.results||{},updateScanButton(),hideProgressSection(),showResultsSection(e),showNotification(`Scan completed! Found ${e.summary?.online_hosts||0} online hosts.`),requestScanHistory(),requestStatistics()}),socket.on("scan_error",e=>{console.error("Scan error:",e),isScanning=!1,updateScanButton(),hideProgressSection(),showError(e.error||"An error occurred during scanning")}),socket.on("scan_history",e=>{displayScanHistory(e||[])}),socket.on("statistics",e=>{displayStatistics(e||{})}),socket.on("auto_scan_status",e=>{updateAutoScanStatus(e)}),socket.on("auto_scan_scheduled",e=>{showNotification(`Automatic scan scheduled for ${new Date(e.next_scan_time).toLocaleTimeString()}`),updateAutoScanStatus({enabled:!0,running:!0,next_scan_time:e.next_scan_time,interval_minutes:e.interval_minutes})}),socket.on("auto_scan_toggled",e=>{e.success&&showNotification(`Automatic scanning ${e.running?"started":"stopped"}`)}),setTimeout(()=>{isConnected&&(requestScanHistory(),requestStatistics())},1e3)}function updateConnectionStatus(e){isConnected=e,elements.statusIndicator.classList.toggle("connected",e),elements.statusText.textContent=e?"Connected":"Disconnected",elements.scanButton.disabled=!e||isScanning;let t=document.getElementById("connectionInfo");if(t&&e&&socket){let n=window.location.hostname;t.textContent=`(${n})`}}function updateScanButton(){let e=elements.scanButton,t=e.querySelector(".btn-text"),n=e.querySelector(".btn-icon");isScanning?(e.classList.add("loading"),e.disabled=!0,t.textContent="Scanning...",n.textContent=""):(e.classList.remove("loading"),e.disabled=!isConnected,t.textContent="Start Scan",n.textContent="\uD83D\uDD0D")}function toggleNetworkRangeInput(){let e=elements.autoDetect.checked;elements.networkRangeGroup.style.display=e?"none":"block"}function showProgressSection(){elements.progressSection.classList.remove("hidden")}function hideProgressSection(){elements.progressSection.classList.add("hidden")}function updateProgress(e,t,n,s={}){elements.progressPercent.textContent=`${Math.round(e)}%`,elements.progressFill.style.width=`${e}%`,elements.progressPhase.textContent=getPhaseLabel(t),elements.progressMessage.textContent=n;let o="";if(s.current_ip){if(o+=`<div>Scanning: ${s.current_ip}`,s.status){let r="online"===s.status?"status-online":"status-offline";o+=` <span class="status-badge ${r}">${s.status}</span>`}s.hostname&&"Unknown"!==s.hostname&&(o+=` <span style="color: #22c55e;">| ${s.hostname}</span>`),o+="</div>"}s.open_ports&&s.open_ports.length>0&&(o+=`<div>Open ports: ${s.open_ports.join(", ")}</div>`),s.total>0&&(o+=`<div>Progress: ${e.toFixed(1)}% of ${s.total} hosts</div>`),void 0!==s.online_hosts&&(o+=`<div style="color: #22c55e;">✓ ${s.online_hosts} hosts found online</div>`),elements.progressDetails.innerHTML=o}function getPhaseLabel(e){switch(e){case"ping_sweep":return"\uD83D\uDCE1 Ping Sweep";case"port_scan":return"\uD83D\uDD0D Port Scanning";case"complete":return"Complete";case"error":return"Error";default:return"Initializing"}}function showResultsSection(e){elements.resultsSection.classList.remove("hidden"),e.summary&&(elements.statsGrid.classList.remove("hidden"),elements.totalHosts.textContent=e.summary.total_hosts||0,elements.onlineHosts.textContent=e.summary.online_hosts||0,elements.hostsWithPorts.textContent=e.summary.hosts_with_ports||0),e.duration&&(elements.scanSummary.textContent=`Completed in ${e.duration.toFixed(2)}s`),filterResults()}function hideResultsSection(){elements.resultsSection.classList.add("hidden")}function updateProgress(e,t,n,s={}){elements.progressPercent.textContent=`${Math.round(e)}%`,elements.progressFill.style.width=`${e}%`,elements.progressPhase.textContent=getPhaseLabel(t),elements.progressMessage.textContent=n;let o="";if(s.current_ip){if(o+=`<div>Scanning: ${s.current_ip}`,s.status){let r="online"===s.status?"status-online":"status-offline";o+=` <span class="status-badge ${r}">${s.status}</span>`}s.hostname&&"Unknown"!==s.hostname&&(o+=` <span style="color: #22c55e;">| ${s.hostname}</span>`),o+="</div>"}s.open_ports&&s.open_ports.length>0&&(o+=`<div>Open ports: ${s.open_ports.join(", ")}</div>`),s.total>0&&(o+=`<div>Progress: ${e.toFixed(1)}% of ${s.total} hosts</div>`),void 0!==s.online_hosts&&(o+=`<div style="color: #22c55e;">${s.online_hosts} hosts found online</div>`),elements.progressDetails.innerHTML=o}function filterResults(){let e=elements.searchInput.value.toLowerCase(),t=elements.sortSelect.value,n=Object.entries(scanResults).filter(([t,n])=>{if("online"===currentFilter&&"online"!==n.status||"offline"===currentFilter&&"offline"!==n.status)return!1;if(e){let s=t.toLowerCase().includes(e),o=n.hostname&&n.hostname.toLowerCase().includes(e);if(!s&&!o)return!1}return!0});n.sort(([e,n],[s,o])=>{if("ports"===t)return(o.ports?.length||0)-(n.ports?.length||0);if("hostname"===t){let r=n.hostname||"Unknown",a=o.hostname||"Unknown";return r.localeCompare(a)}return e.localeCompare(s,void 0,{numeric:!0})}),updateFilterButtonCounts(),renderResultsTable(n)}function updateFilterButtonCounts(){let e=Object.keys(scanResults).length,t=Object.values(scanResults).filter(e=>"online"===e.status).length;document.querySelector('[data-filter="all"]').textContent=`All (${e})`,document.querySelector('[data-filter="online"]').textContent=`Online (${t})`,document.querySelector('[data-filter="offline"]').textContent=`Offline (${e-t})`}function renderResultsTable(e){let t=elements.resultsBody;if(t.innerHTML="",0===e.length){t.innerHTML=`
+let socket = null,
+    isConnected = !1,
+    isScanning = !1,
+    scanResults = {},
+    currentFilter = "all";
+const elements = {
+    statusIndicator: document.getElementById("statusIndicator"),
+    statusText: document.getElementById("statusText"),
+    autoDetect: document.getElementById("autoDetect"),
+    networkRangeGroup: document.getElementById("networkRangeGroup"),
+    networkRange: document.getElementById("networkRange"),
+    notes: document.getElementById("notes"),
+    scanForm: document.getElementById("scanForm"),
+    scanButton: document.getElementById("scanButton"),
+    progressSection: document.getElementById("progressSection"),
+    progressPhase: document.getElementById("progressPhase"),
+    progressPercent: document.getElementById("progressPercent"),
+    progressFill: document.getElementById("progressFill"),
+    progressMessage: document.getElementById("progressMessage"),
+    progressDetails: document.getElementById("progressDetails"),
+    resultsSection: document.getElementById("resultsSection"),
+    statsGrid: document.getElementById("statsGrid"),
+    totalHosts: document.getElementById("totalHosts"),
+    onlineHosts: document.getElementById("onlineHosts"),
+    hostsWithPorts: document.getElementById("hostsWithPorts"),
+    scanSummary: document.getElementById("scanSummary"),
+    searchInput: document.getElementById("searchInput"),
+    sortSelect: document.getElementById("sortSelect"),
+    resultsBody: document.getElementById("resultsBody"),
+    historyContainer: document.getElementById("historyContainer"),
+    statisticsContainer: document.getElementById("statisticsContainer"),
+    refreshHistoryBtn: document.getElementById("refreshHistoryBtn"),
+    errorContainer: document.getElementById("errorContainer"),
+    errorMessage: document.getElementById("errorMessage"),
+    notificationContainer: document.getElementById("notificationContainer"),
+    notificationMessage: document.getElementById("notificationMessage")
+};
+
+function init() {
+    setupEventListeners(), initializeSocket(), setTimeout(() => {
+        debugEventListeners()
+    }, 1e3)
+}
+
+function debugEventListeners() {
+    console.log("=== DOM ELEMENT DEBUG ==="), Object.keys(elements).forEach(e => {
+        let t = elements[e];
+        console.log(`${e}:`, t ? "Found" : "NOT FOUND")
+    }), console.log("=== SOCKET DEBUG ==="), console.log("Socket connected:", socket?.connected), console.log("Is scanning:", isScanning), console.log("Scan results:", Object.keys(scanResults).length, "hosts")
+}
+
+function setupEventListeners() {
+    elements.autoDetect && elements.autoDetect.addEventListener("change", toggleNetworkRangeInput), elements.scanForm ? elements.scanForm.addEventListener("submit", handleScanSubmit) : console.error("Scan form not found for event listener"), elements.scanButton && elements.scanButton.addEventListener("click", e => {
+        "submit" !== e.target.type && handleScanSubmit(e)
+    }), elements.searchInput && elements.searchInput.addEventListener("input", filterResults), elements.sortSelect && elements.sortSelect.addEventListener("change", filterResults), elements.refreshHistoryBtn && elements.refreshHistoryBtn.addEventListener("click", requestScanHistory), document.querySelectorAll(".filter-btn").forEach(e => {
+        e.addEventListener("click", e => {
+            document.querySelectorAll(".filter-btn").forEach(e => e.classList.remove("active")), e.target.classList.add("active"), currentFilter = e.target.dataset.filter, filterResults()
+        })
+    })
+}
+
+function initializeSocket() {
+    try {
+        let e = window.location.hostname,
+            t = window.location.port,
+            n;
+        n = "3030" === t ? `http://${e}:5050` : `http://${e}:80`, console.log(`Attempting to connect to: ${n}`), (socket = io(n, {
+            transports: ["websocket", "polling"],
+            timeout: 2e4,
+            reconnection: !0,
+            reconnectionAttempts: 5,
+            reconnectionDelay: 1e3,
+            forceNew: !0
+        })).on("connect", () => {
+            console.log(`Connected successfully to ${n}`), updateConnectionStatus(!0), clearError()
+        }), socket.on("disconnect", e => {
+            console.log(`Disconnected: ${e}`), updateConnectionStatus(!1), isScanning = !1, updateScanButton()
+        }), socket.on("connect_error", e => {
+            console.error("Connection error:", {
+                message: e.message,
+                description: e.description,
+                type: e.type
+            }), updateConnectionStatus(!1), showError(`Connection failed: ${e.message||"Unknown error"}`)
+        }), socket.on("connected", e => {
+            showNotification(e.status)
+        }), socket.on("scan_started", e => {
+            isScanning = !0, scanResults = {}, updateScanButton(), showProgressSection(), hideResultsSection(), updateProgress(0, "initializing", e.status)
+        }), socket.on("scan_progress", e => {
+            updateProgress(e.progress, e.phase, e.message, e)
+        }), socket.on("scan_complete", e => {
+            isScanning = !1, scanResults = e.results || {}, updateScanButton(), hideProgressSection(), showResultsSection(e), showNotification(`Scan completed! Found ${e.summary?.online_hosts||0} online hosts.`), requestScanHistory(), requestStatistics()
+        }), socket.on("scan_error", e => {
+            console.error("Scan error:", e), isScanning = !1, updateScanButton(), hideProgressSection(), showError(e.error || "An error occurred during scanning")
+        }), socket.on("scan_history", e => {
+            displayScanHistory(e || [])
+        }), socket.on("statistics", e => {
+            displayStatistics(e || {})
+        }), socket.on("auto_scan_status", e => {
+            updateAutoScanStatus(e)
+        }), socket.on("auto_scan_scheduled", e => {
+            showNotification(`Automatic scan scheduled for ${new Date(e.next_scan_time).toLocaleTimeString()}`), updateAutoScanStatus({
+                enabled: !0,
+                running: !0,
+                next_scan_time: e.next_scan_time,
+                interval_minutes: e.interval_minutes
+            })
+        }), socket.on("auto_scan_toggled", e => {
+            e.success && showNotification(`Automatic scanning ${e.running?"started":"stopped"}`)
+        }), setTimeout(() => {
+            isConnected && (requestScanHistory(), requestStatistics())
+        }, 1e3)
+    } catch (s) {
+        console.error("Socket initialization error:", s), showError("Failed to initialize connection to scan server")
+    }
+}
+
+function detectConnectionEnvironment() {
+    let e = window.location.hostname,
+        t = window.location.port,
+        n = window.location.protocol,
+        s, o;
+    return "3030" === t ? (s = `${n}//${e}:5050`, o = "direct-backend") : "localhost" === e || "127.0.0.1" === e ? (s = `${n}//${e}:80`, o = "local-nginx") : (s = `${n}//${e}${t&&"80"!==t?":"+t:""}`, o = "remote-nginx"), {
+        serverUrl: s,
+        connectionType: o,
+        hostname: e,
+        port: t,
+        isFallback: !1
+    }
+}
+
+function tryFallbackConnection() {
+    let e = window.location.hostname,
+        t = window.location.protocol,
+        n = [`${t}//${e}:5050`, `${t}//${e}:80`, `${t}//localhost:80`, `${t}//127.0.0.1:80`, ],
+        s = 0;
+    ! function e() {
+        if (s >= n.length) {
+            showError("All connection attempts failed. Please check server status.");
+            return
+        }
+        let t = n[s];
+        console.log(`Attempting fallback connection ${s+1}: ${t}`), socket && socket.disconnect(), (socket = io(t, {
+            transports: ["websocket", "polling"],
+            timeout: 1e4,
+            reconnection: !1,
+            forceNew: !0,
+            path: "/socket.io/"
+        })).on("connect", () => {
+            console.log(`Fallback connection successful: ${t}`), updateConnectionStatus(!0), clearError(), setupSocketEventHandlers()
+        }), socket.on("connect_error", () => {
+            s++, setTimeout(e, 2e3)
+        })
+    }()
+}
+
+function setupSocketEventHandlers() {
+    socket.on("connected", e => {
+        showNotification(e.status)
+    }), socket.on("scan_started", e => {
+        isScanning = !0, scanResults = {}, updateScanButton(), showProgressSection(), hideResultsSection(), updateProgress(0, "initializing", e.status)
+    }), socket.on("scan_progress", e => {
+        updateProgress(e.progress, e.phase, e.message, e)
+    }), socket.on("scan_complete", e => {
+        isScanning = !1, scanResults = e.results || {}, updateScanButton(), hideProgressSection(), showResultsSection(e), showNotification(`Scan completed! Found ${e.summary?.online_hosts||0} online hosts.`), requestScanHistory(), requestStatistics()
+    }), socket.on("scan_error", e => {
+        console.error("Scan error:", e), isScanning = !1, updateScanButton(), hideProgressSection(), showError(e.error || "An error occurred during scanning")
+    }), socket.on("scan_history", e => {
+        displayScanHistory(e || [])
+    }), socket.on("statistics", e => {
+        displayStatistics(e || {})
+    }), socket.on("auto_scan_status", e => {
+        updateAutoScanStatus(e)
+    }), socket.on("auto_scan_scheduled", e => {
+        showNotification(`Automatic scan scheduled for ${new Date(e.next_scan_time).toLocaleTimeString()}`), updateAutoScanStatus({
+            enabled: !0,
+            running: !0,
+            next_scan_time: e.next_scan_time,
+            interval_minutes: e.interval_minutes
+        })
+    }), socket.on("auto_scan_toggled", e => {
+        e.success && showNotification(`Automatic scanning ${e.running?"started":"stopped"}`)
+    }), setTimeout(() => {
+        isConnected && (requestScanHistory(), requestStatistics())
+    }, 1e3)
+}
+
+function updateConnectionStatus(e) {
+    isConnected = e, elements.statusIndicator.classList.toggle("connected", e), elements.statusText.textContent = e ? "Connected" : "Disconnected", elements.scanButton.disabled = !e || isScanning;
+    let t = document.getElementById("connectionInfo");
+    if (t && e && socket) {
+        let n = window.location.hostname;
+        t.textContent = `(${n})`
+    }
+}
+
+function updateScanButton() {
+    let e = elements.scanButton,
+        t = e.querySelector(".btn-text"),
+        n = e.querySelector(".btn-icon");
+    isScanning ? (e.classList.add("loading"), e.disabled = !0, t.textContent = "Scanning...", n.textContent = "") : (e.classList.remove("loading"), e.disabled = !isConnected, t.textContent = "Start Scan", n.textContent = "\uD83D\uDD0D")
+}
+
+function toggleNetworkRangeInput() {
+    let e = elements.autoDetect.checked;
+    elements.networkRangeGroup.style.display = e ? "none" : "block"
+}
+
+function showProgressSection() {
+    elements.progressSection.classList.remove("hidden")
+}
+
+function hideProgressSection() {
+    elements.progressSection.classList.add("hidden")
+}
+
+function updateProgress(e, t, n, s = {}) {
+    elements.progressPercent.textContent = `${Math.round(e)}%`, elements.progressFill.style.width = `${e}%`, elements.progressPhase.textContent = getPhaseLabel(t), elements.progressMessage.textContent = n;
+    let o = "";
+    if (s.current_ip) {
+        if (o += `<div>Scanning: ${s.current_ip}`, s.status) {
+            let r = "online" === s.status ? "status-online" : "status-offline";
+            o += ` <span class="status-badge ${r}">${s.status}</span>`
+        }
+        s.hostname && "Unknown" !== s.hostname && (o += ` <span style="color: #22c55e;">| ${s.hostname}</span>`), o += "</div>"
+    }
+    s.open_ports && s.open_ports.length > 0 && (o += `<div>Open ports: ${s.open_ports.join(", ")}</div>`), s.total > 0 && (o += `<div>Progress: ${e.toFixed(1)}% of ${s.total} hosts</div>`), void 0 !== s.online_hosts && (o += `<div style="color: #22c55e;">✓ ${s.online_hosts} hosts found online</div>`), elements.progressDetails.innerHTML = o
+}
+
+function getPhaseLabel(e) {
+    switch (e) {
+        case "ping_sweep":
+            return "\uD83D\uDCE1 Ping Sweep";
+        case "port_scan":
+            return "\uD83D\uDD0D Port Scanning";
+        case "complete":
+            return "Complete";
+        case "error":
+            return "Error";
+        default:
+            return "Initializing"
+    }
+}
+
+function showResultsSection(e) {
+    elements.resultsSection.classList.remove("hidden"), e.summary && (elements.statsGrid.classList.remove("hidden"), elements.totalHosts.textContent = e.summary.total_hosts || 0, elements.onlineHosts.textContent = e.summary.online_hosts || 0, elements.hostsWithPorts.textContent = e.summary.hosts_with_ports || 0), e.duration && (elements.scanSummary.textContent = `Completed in ${e.duration.toFixed(2)}s`), filterResults()
+}
+
+function hideResultsSection() {
+    elements.resultsSection.classList.add("hidden")
+}
+
+function updateProgress(e, t, n, s = {}) {
+    elements.progressPercent.textContent = `${Math.round(e)}%`, elements.progressFill.style.width = `${e}%`, elements.progressPhase.textContent = getPhaseLabel(t), elements.progressMessage.textContent = n;
+    let o = "";
+    if (s.current_ip) {
+        if (o += `<div>Scanning: ${s.current_ip}`, s.status) {
+            let r = "online" === s.status ? "status-online" : "status-offline";
+            o += ` <span class="status-badge ${r}">${s.status}</span>`
+        }
+        s.hostname && "Unknown" !== s.hostname && (o += ` <span style="color: #22c55e;">| ${s.hostname}</span>`), o += "</div>"
+    }
+    s.open_ports && s.open_ports.length > 0 && (o += `<div>Open ports: ${s.open_ports.join(", ")}</div>`), s.total > 0 && (o += `<div>Progress: ${e.toFixed(1)}% of ${s.total} hosts</div>`), void 0 !== s.online_hosts && (o += `<div style="color: #22c55e;">${s.online_hosts} hosts found online</div>`), elements.progressDetails.innerHTML = o
+}
+
+function filterResults() {
+    let e = elements.searchInput.value.toLowerCase(),
+        t = elements.sortSelect.value,
+        n = Object.entries(scanResults).filter(([t, n]) => {
+            if ("online" === currentFilter && "online" !== n.status || "offline" === currentFilter && "offline" !== n.status) return !1;
+            if (e) {
+                let s = t.toLowerCase().includes(e),
+                    o = n.hostname && n.hostname.toLowerCase().includes(e);
+                if (!s && !o) return !1
+            }
+            return !0
+        });
+    n.sort(([e, n], [s, o]) => {
+        if ("ports" === t) return (o.ports?.length || 0) - (n.ports?.length || 0);
+        if ("hostname" === t) {
+            let r = n.hostname || "Unknown",
+                a = o.hostname || "Unknown";
+            return r.localeCompare(a)
+        }
+        return e.localeCompare(s, void 0, {
+            numeric: !0
+        })
+    }), updateFilterButtonCounts(), renderResultsTable(n)
+}
+
+function updateFilterButtonCounts() {
+    let e = Object.keys(scanResults).length,
+        t = Object.values(scanResults).filter(e => "online" === e.status).length;
+    document.querySelector('[data-filter="all"]').textContent = `All (${e})`, document.querySelector('[data-filter="online"]').textContent = `Online (${t})`, document.querySelector('[data-filter="offline"]').textContent = `Offline (${e-t})`
+}
+
+function renderResultsTable(e) {
+    let t = elements.resultsBody;
+    if (t.innerHTML = "", 0 === e.length) {
+        t.innerHTML = `
            <tr>
                <td colspan="4" style="text-align: center; padding: 40px; color: #6b7280;">
                    No results found matching your criteria
                </td>
            </tr>
-       `;return}e.forEach(([e,n])=>{let s=document.createElement("tr"),o="online"===n.status?"status-online":"status-offline",r=n.ports&&n.ports.length>0?n.ports.map(e=>`<span class="port-tag">${e}</span>`).join(""):'<span style="color: #6b7280; font-style: italic;">No open ports</span>',a=n.hostname&&"Unknown"!==n.hostname?`<span class="hostname">${n.hostname}</span>`:'<span style="color: #6b7280; font-style: italic;">Unknown</span>';s.innerHTML=`
+       `;
+        return
+    }
+    e.forEach(([e, n]) => {
+        let s = document.createElement("tr"),
+            o = "online" === n.status ? "status-online" : "status-offline",
+            r = n.ports && n.ports.length > 0 ? n.ports.map(e => `<span class="port-tag">${e}</span>`).join("") : '<span style="color: #6b7280; font-style: italic;">No open ports</span>',
+            a = n.hostname && "Unknown" !== n.hostname ? `<span class="hostname">${n.hostname}</span>` : '<span style="color: #6b7280; font-style: italic;">Unknown</span>';
+        s.innerHTML = `
            <td><span class="ip-address">${e}</span></td>
            <td>${a}</td>
            <td><span class="status-badge ${o}">${n.status}</span></td>
            <td><div class="port-list">${r}</div></td>
-       `,t.appendChild(s)})}function displayScanHistory(e){let t=elements.historyContainer;if(0===e.length){t.innerHTML='<p class="loading-text">No scan history available</p>';return}t.innerHTML=e.map(e=>`
+       `, t.appendChild(s)
+    })
+}
+
+function displayScanHistory(e) {
+    let t = elements.historyContainer;
+    if (0 === e.length) {
+        t.innerHTML = '<p class="loading-text">No scan history available</p>';
+        return
+    }
+    t.innerHTML = e.map(e => `
        <div class="history-item">
            <div class="history-header">
                <span class="history-id">Scan #${e.scan_id}</span>
@@ -22,9 +338,97 @@ let socket=null,isConnected=!1,isScanning=!1,scanResults={},currentFilter="all";
                ${e.notes?`<div><strong>Notes:</strong> ${e.notes}</div>`:""}
            </div>
        </div>
-   `).join("")}function displayStatistics(e){let t=elements.statisticsContainer,n=[{label:"Total Scans",value:e.total_scans||0},{label:"Unique IPs Scanned",value:e.unique_ips_scanned||0},{label:"Last Scan",value:e.last_scan_date?formatTimestamp(e.last_scan_date):"Never"},{label:"Avg Online Hosts",value:e.average_online_hosts||0},];t.innerHTML=n.map(e=>`
+   `).join("")
+}
+
+function displayStatistics(e) {
+    let t = elements.statisticsContainer,
+        n = [{
+            label: "Total Scans",
+            value: e.total_scans || 0
+        }, {
+            label: "Unique IPs Scanned",
+            value: e.unique_ips_scanned || 0
+        }, {
+            label: "Last Scan",
+            value: e.last_scan_date ? formatTimestamp(e.last_scan_date) : "Never"
+        }, {
+            label: "Avg Online Hosts",
+            value: e.average_online_hosts || 0
+        }, ];
+    t.innerHTML = n.map(e => `
        <div class="stat-item">
            <span class="stat-label">${e.label}</span>
            <span class="stat-value">${e.value}</span>
        </div>
-   `).join("")}function handleScanSubmit(e){if(e.preventDefault(),!isConnected){console.error("Not connected to server"),showError("Not connected to server");return}if(isScanning){console.error("Already scanning"),showError("Scan already in progress");return}let t=elements.autoDetect.checked?null:elements.networkRange.value.trim()||null,n=elements.notes.value.trim()||null;startScan(t,n)}function startScan(e,t){socket&&socket.connected?socket.emit("start_scan",{network_range:e,notes:t||"Web UI Scan"}):(console.error("Socket not connected:",{socket,connected:socket?.connected}),showError("Not connected to server"))}function requestScanHistory(){socket&&socket.connected&&socket.emit("get_scan_history")}function requestStatistics(){socket&&socket.connected&&socket.emit("get_statistics")}function showError(e){elements.errorMessage.textContent=e,elements.errorContainer.classList.remove("hidden"),setTimeout(()=>{clearError()},1e4)}function clearError(){elements.errorContainer.classList.add("hidden")}function showNotification(e){elements.notificationMessage.textContent=e,elements.notificationContainer.classList.remove("hidden"),setTimeout(()=>{clearNotification()},5e3)}function clearNotification(){elements.notificationContainer.classList.add("hidden")}function formatTimestamp(e){return e?new Date(e).toLocaleString():"Unknown"}function formatDuration(e){return e?e<60?`${e.toFixed(1)}s`:`${Math.floor(e/60)}m ${(e%60).toFixed(0)}s`:"0s"}function updateAutoScanStatus(e){let t=document.getElementById("autoScanStatus");if(t&&e.enabled&&e.running){let n=new Date(e.next_scan_time);t.textContent=`Next auto-scan: ${n.toLocaleTimeString()}`,t.style.display="block"}}"loading"===document.readyState?document.addEventListener("DOMContentLoaded",init):init(),window.clearError=clearError,window.clearNotification=clearNotification;
+   `).join("")
+}
+
+function handleScanSubmit(e) {
+    if (e.preventDefault(), !isConnected) {
+        console.error("Not connected to server"), showError("Not connected to server");
+        return
+    }
+    if (isScanning) {
+        console.error("Already scanning"), showError("Scan already in progress");
+        return
+    }
+    let t = elements.autoDetect.checked ? null : elements.networkRange.value.trim() || null,
+        n = elements.notes.value.trim() || null;
+    startScan(t, n)
+}
+
+function startScan(e, t) {
+    socket && socket.connected ? socket.emit("start_scan", {
+        network_range: e,
+        notes: t || "Web UI Scan"
+    }) : (console.error("Socket not connected:", {
+        socket,
+        connected: socket?.connected
+    }), showError("Not connected to server"))
+}
+
+function requestScanHistory() {
+    socket && socket.connected && socket.emit("get_scan_history")
+}
+
+function requestStatistics() {
+    socket && socket.connected && socket.emit("get_statistics")
+}
+
+function showError(e) {
+    elements.errorMessage.textContent = e, elements.errorContainer.classList.remove("hidden"), setTimeout(() => {
+        clearError()
+    }, 1e4)
+}
+
+function clearError() {
+    elements.errorContainer.classList.add("hidden")
+}
+
+function showNotification(e) {
+    elements.notificationMessage.textContent = e, elements.notificationContainer.classList.remove("hidden"), setTimeout(() => {
+        clearNotification()
+    }, 5e3)
+}
+
+function clearNotification() {
+    elements.notificationContainer.classList.add("hidden")
+}
+
+function formatTimestamp(e) {
+    return e ? new Date(e).toLocaleString() : "Unknown"
+}
+
+function formatDuration(e) {
+    return e ? e < 60 ? `${e.toFixed(1)}s` : `${Math.floor(e/60)}m ${(e%60).toFixed(0)}s` : "0s"
+}
+
+function updateAutoScanStatus(e) {
+    let t = document.getElementById("autoScanStatus");
+    if (t && e.enabled && e.running) {
+        let n = new Date(e.next_scan_time);
+        t.textContent = `Next auto-scan: ${n.toLocaleTimeString()}`, t.style.display = "block"
+    }
+}
+"loading" === document.readyState ? document.addEventListener("DOMContentLoaded", init) : init(), window.clearError = clearError, window.clearNotification = clearNotification;
